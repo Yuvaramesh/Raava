@@ -1,0 +1,6 @@
+flask
+mongo
+dotenv
+pillow 
+requests 
+google-generativeai
