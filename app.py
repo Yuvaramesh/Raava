@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
@@ -6,6 +6,7 @@ import google.generativeai as genai
 from PIL import Image
 import requests
 from io import BytesIO
+import base64
 
 load_dotenv()
 app = Flask(__name__)
@@ -18,6 +19,12 @@ collection = db["Cars"]
 # Configure Gemini
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
+
+# ElevenLabs Configuration
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+ELEVENLABS_VOICE_ID = os.getenv(
+    "ELEVENLABS_VOICE_ID", "mCQMfsqGDT6IDkEKR20a"
+)  # Default voice
 
 
 def get_car_context():
@@ -282,6 +289,72 @@ Be helpful and informative."""
             ),
             500,
         )
+
+
+@app.route("/api/text-to-speech", methods=["POST"])
+def text_to_speech():
+    """Convert text to speech using ElevenLabs API"""
+    try:
+        data = request.json
+        text = data.get("text", "")
+
+        if not text:
+            return jsonify({"success": False, "message": "No text provided"}), 400
+
+        if not ELEVENLABS_API_KEY:
+            return (
+                jsonify(
+                    {"success": False, "message": "ElevenLabs API key not configured"}
+                ),
+                500,
+            )
+
+        # ElevenLabs TTS API endpoint
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+
+        headers = {
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": ELEVENLABS_API_KEY,
+        }
+
+        payload = {
+            "text": text,
+            "model_id": "eleven_turbo_v2",
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+        }
+
+        response = requests.post(url, json=payload, headers=headers)
+
+        if response.status_code == 200:
+            # Convert audio to base64
+            audio_base64 = base64.b64encode(response.content).decode("utf-8")
+            return jsonify({"success": True, "audio": audio_base64})
+        else:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": f"ElevenLabs API error: {response.status_code}",
+                    }
+                ),
+                500,
+            )
+
+    except Exception as e:
+        print(f"TTS error: {str(e)}")
+        return (
+            jsonify({"success": False, "message": f"Text-to-speech error: {str(e)}"}),
+            500,
+        )
+
+
+@app.route("/api/speech-to-text", methods=["POST"])
+def speech_to_text():
+    """Convert speech to text using browser's built-in Web Speech API"""
+    # Note: The actual STT is handled on the client side using Web Speech API
+    # This endpoint is kept for potential future server-side processing
+    return jsonify({"success": True, "message": "STT is handled client-side"})
 
 
 if __name__ == "__main__":
