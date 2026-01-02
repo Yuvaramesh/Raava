@@ -7,6 +7,9 @@ from PIL import Image
 import requests
 from io import BytesIO
 import base64
+from langgraph.workflow import create_graph
+from langchain_core.messages import HumanMessage, AIMessage
+import asyncio
 
 load_dotenv()
 app = Flask(__name__)
@@ -25,6 +28,24 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.getenv(
     "ELEVENLABS_VOICE_ID", "mCQMfsqGDT6IDkEKR20a"
 )  # Default voice
+
+# Initialize LangGraph
+graph = create_graph()
+
+# Initialize LangGraph
+graph = create_graph()
+
+
+def run_async(coro):
+    """Safely run an async coroutine in a sync environment like Flask."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("Loop is closed")
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
 
 def get_car_context():
@@ -131,107 +152,20 @@ def get_makes():
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    """Enhanced chat endpoint with Gemini AI"""
+    """Enhanced chat endpoint with LangGraph Multi-Agent system"""
     try:
         user_msg = request.json.get("message", "")
-        car_name = request.json.get(
-            "carName", ""
-        )  # Optional: if user is viewing a specific car
 
-        # Get all cars for context
-        cars = get_car_context()
-        if not cars:
-            return jsonify(
-                {
-                    "reply": "Sorry, I couldn't access the car database.",
-                    "success": False,
-                }
-            )
+        # Prepare state for LangGraph
+        initial_state = {"messages": [HumanMessage(content=user_msg)], "next_agent": ""}
 
-        # Find the specific car if mentioned
-        current_car = None
-        car_images = []
+        async def get_reply():
+            result = await graph.ainvoke(initial_state)
+            return result["messages"][-1].content
 
-        # Check if car_name is provided or find it in the message
-        if car_name:
-            current_car = next(
-                (c for c in cars if c["name"].lower() == car_name.lower()), None
-            )
-        else:
-            # Try to find car mentioned in message
-            for car in cars:
-                if car["name"].lower() in user_msg.lower():
-                    current_car = car
-                    break
+        ai_reply = run_async(get_reply())
 
-        # Prepare context for Gemini
-        cars_list = "\n".join([f"- {car['name']}" for car in cars])
-
-        system_context = f"""You are Raava, a premium automotive sales consultant specializing in luxury and high-performance vehicles for the UK market.
-
-Available vehicles in our exclusive collection:
-{cars_list}
-
-Your expertise includes:
-1. Detailed knowledge of luxury car specifications, performance features, and cutting-edge technology
-2. UK market pricing (OTR - On The Road prices including VAT, first registration fee, number plates, and road tax)
-3. Comparative analysis of premium and luxury models
-4. Performance metrics, fuel economy (mpg), CO2 emissions, and WLTP figures
-5. Safety ratings (Euro NCAP), driver assistance systems, and premium features
-6. Finance options including PCP (Personal Contract Purchase), HP (Hire Purchase), and leasing
-
-UK Market Guidelines:
-- All prices should be in GBP (£) with realistic UK market estimates
-- OTR (On The Road) price includes: List price + First registration fee + Number plates + 12 months road tax + Delivery charges
-- Discuss road tax bands based on CO2 emissions (relevant for UK)
-- Mention fuel economy in mpg (miles per gallon) and CO2 emissions in g/km
-- Reference ULEZ (Ultra Low Emission Zone) compliance for London buyers when relevant
-- Discuss insurance groups (1-50 scale in UK)
-- Be aware of company car tax implications and BIK (Benefit in Kind) rates for business buyers
-
-Tone & Approach:
-- Sophisticated yet approachable - we're selling premium vehicles to discerning clients
-- Emphasize British motoring heritage, German engineering excellence, or Italian craftsmanship as appropriate
-- Focus on the ownership experience, not just the transaction
-- Highlight exclusive features, bespoke options, and premium materials
-- Keep responses professional, refined, and informative
-- Use British English spelling and terminology
-
-Current conversation context:
-"""
-
-        if current_car:
-            system_context += (
-                f"\nThe customer is currently viewing: {current_car['name']}"
-            )
-            images_data = current_car.get("image", [])
-            if isinstance(images_data, str):
-                car_images = [images_data]
-            else:
-                car_images = images_data
-
-        # Prepare content for Gemini
-        prompt_parts = [system_context, f"\nCustomer question: {user_msg}"]
-
-        # If we have images and the query might benefit from visual context
-        if car_images and len(car_images) > 0:
-            # Download first image for vision analysis
-            img = download_image(car_images[0])
-            if img:
-                prompt_parts.insert(1, img)
-
-        # Call Gemini API
-        response = model.generate_content(prompt_parts)
-        ai_reply = response.text
-
-        # Return response with images if specific car was found
-        result = {"reply": ai_reply, "success": True}
-
-        if current_car:
-            result["car"] = current_car
-            result["image"] = car_images[:4]  # Limit to 4 images
-
-        return jsonify(result)
+        return jsonify({"reply": ai_reply, "success": True})
 
     except Exception as e:
         print(f"Chat error: {str(e)}")

@@ -4,3 +4,7 @@ dotenv
 pillow 
 requests 
 google-generativeai
+langgraph
+langchain
+langchain-google-genai
+pydantic
