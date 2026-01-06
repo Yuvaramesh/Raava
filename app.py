@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
@@ -25,14 +25,9 @@ model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
 # ElevenLabs Configuration
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-ELEVENLABS_VOICE_ID = os.getenv(
-    "ELEVENLABS_VOICE_ID", "mCQMfsqGDT6IDkEKR20a"
-)  # Default voice
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "mCQMfsqGDT6IDkEKR20a")
 
-# Initialize LangGraph
-graph = create_graph()
-
-# Initialize LangGraph
+# Initialize Raava Luxury Automotive Concierge System
 graph = create_graph()
 
 
@@ -49,11 +44,37 @@ def run_async(coro):
 
 
 def get_car_context():
-    """Get all cars from database for context"""
+    """Get luxury/performance cars from database for agent context"""
     doc = collection.find_one({})
     if not doc or "cars" not in doc:
         return []
-    return doc["cars"]
+
+    # Filter for luxury/performance vehicles
+    cars = doc["cars"]
+
+    # Create formatted context for agents
+    car_summaries = []
+    for idx, car in enumerate(cars):
+        key_info = car.get("key_information", {})
+        pricing = car.get("pricing", "")
+
+        # Extract price if available
+        price_str = "Contact for pricing"
+        if "£" in pricing:
+            try:
+                price_str = pricing.split("£")[1].split("\n")[0].strip()
+                price_str = f"£{price_str}"
+            except:
+                pass
+
+        summary = f"""
+Vehicle {idx + 1}: {key_info.get('title', 'Unknown')} ({key_info.get('make', 'Unknown')})
+Price: {price_str}
+Overview: {car.get('overview', 'N/A')[:150]}...
+"""
+        car_summaries.append(summary)
+
+    return "\n".join(car_summaries)
 
 
 def download_image(url):
@@ -94,40 +115,43 @@ def get_cars():
 
         # Filter by search query
         if search_query:
-            cars = [car for car in cars if search_query in car["name"].lower()]
+            cars = [
+                car
+                for car in cars
+                if search_query
+                in car.get("key_information", {}).get("title", "").lower()
+                or search_query
+                in car.get("key_information", {}).get("make", "").lower()
+            ]
 
         # Filter by make
         if make_filter:
-            cars = [car for car in cars if make_filter in car["name"].lower()]
+            cars = [
+                car
+                for car in cars
+                if make_filter in car.get("key_information", {}).get("make", "").lower()
+            ]
 
         # Sort cars
-        if sort_by == "name":
-            cars = sorted(cars, key=lambda x: x["name"])
+        if sort_by == "price":
+            cars = sorted(
+                cars,
+                key=lambda x: int(
+                    x.get("pricing", "").split("£")[1].split("\n")[0].replace(",", "")
+                    if "£" in x.get("pricing", "")
+                    else 999999
+                ),
+            )
+        else:  # name
+            cars = sorted(
+                cars,
+                key=lambda x: x.get("key_information", {}).get("title", "").lower(),
+            )
 
         return jsonify({"success": True, "cars": cars, "total": len(cars)})
 
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route("/api/car/<car_name>", methods=["GET"])
-def get_car_details(car_name):
-    """Get details for a specific car"""
-    try:
-        doc = collection.find_one({})
-        if not doc:
-            return jsonify({"success": False, "message": "No cars found"}), 404
-
-        car = next(
-            (c for c in doc["cars"] if c["name"].lower() == car_name.lower()), None
-        )
-
-        if car:
-            return jsonify({"success": True, "car": car})
-        else:
-            return jsonify({"success": False, "message": "Car not found"}), 404
-
-    except Exception as e:
+        print(f"Error in get_cars: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
 
@@ -136,43 +160,102 @@ def get_makes():
     """Get all unique car makes"""
     try:
         doc = collection.find_one({})
-        if not doc:
+        if not doc or "cars" not in doc:
             return jsonify({"success": False, "message": "No cars found"}), 404
 
         makes = set()
         for car in doc["cars"]:
-            make = car["name"].split()[0]
+            make = car.get("key_information", {}).get("make", "Unknown")
             makes.add(make)
 
         return jsonify({"success": True, "makes": sorted(list(makes))})
 
     except Exception as e:
+        print(f"Error in get_makes: {str(e)}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/car/<int:car_id>", methods=["GET"])
+def get_car_details(car_id):
+    """Get details for a specific car by index"""
+    try:
+        doc = collection.find_one({})
+        if not doc or "cars" not in doc:
+            return jsonify({"success": False, "message": "No cars found"}), 404
+
+        cars = doc["cars"]
+        if car_id < 0 or car_id >= len(cars):
+            return jsonify({"success": False, "message": "Car not found"}), 404
+
+        car = cars[car_id]
+        return jsonify({"success": True, "car": car})
+
+    except Exception as e:
+        print(f"Error in get_car_details: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    """Enhanced chat endpoint with LangGraph Multi-Agent system"""
+    """
+    Raava Luxury Automotive Concierge Chat Endpoint
+
+    Routes client inquiries through our multi-agent system:
+    - Supervisor: Intelligent routing and general inquiries
+    - Concierge: Vehicle acquisition and financing
+    - Service Manager: Maintenance and service coordination
+    - Consigner: Vehicle listing and valuation
+    """
     try:
         user_msg = request.json.get("message", "")
 
-        # Prepare state for LangGraph
+        if not user_msg.strip():
+            return jsonify(
+                {
+                    "reply": "I'm here to assist you. How may I help you today?",
+                    "success": True,
+                }
+            )
+
+        # Get current inventory context for agents
+        inventory_context = get_car_context()
+
+        # Prepare state for Raava multi-agent system
         initial_state = {"messages": [HumanMessage(content=user_msg)], "next_agent": ""}
 
-        async def get_reply():
-            result = await graph.ainvoke(initial_state)
-            return result["messages"][-1].content
+        async def get_luxury_concierge_reply():
+            """Execute the multi-agent workflow"""
+            try:
+                # Invoke the graph with client inquiry
+                result = await graph.ainvoke(initial_state)
 
-        ai_reply = run_async(get_reply())
+                # Extract the final agent's response
+                if result["messages"]:
+                    return result["messages"][-1].content
+                else:
+                    return "I apologize, but I'm having difficulty processing your request. Could you please rephrase your inquiry?"
+
+            except Exception as e:
+                print(f"Graph execution error: {str(e)}")
+                import traceback
+
+                traceback.print_exc()
+                return f"I apologize for the inconvenience. There was a technical issue: {str(e)}"
+
+        ai_reply = run_async(get_luxury_concierge_reply())
 
         return jsonify({"reply": ai_reply, "success": True})
 
     except Exception as e:
         print(f"Chat error: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
+
         return (
             jsonify(
                 {
-                    "reply": f"I apologize, but I'm having trouble processing your request. Please try again. Error: {str(e)}",
+                    "reply": "I apologize, but I'm experiencing a temporary technical difficulty. Please try again in a moment.",
                     "success": False,
                 }
             ),
@@ -182,49 +265,54 @@ def chat():
 
 @app.route("/chat/image", methods=["POST"])
 def chat_with_image():
-    """Handle image upload and analysis"""
+    """Handle image upload and analysis for vehicle identification"""
     try:
         if "image" not in request.files:
             return jsonify({"reply": "No image was uploaded.", "success": False}), 400
 
         file = request.files["image"]
         question = request.form.get(
-            "message", "What car is this? Provide details about the model."
+            "message", "What vehicle is this? Provide expert analysis."
         )
 
         # Open and prepare image
         img = Image.open(file.stream)
 
-        # Get car context
+        # Get current inventory for context
         cars = get_car_context()
-        cars_list = "\n".join([f"- {car['name']}" for car in cars])
 
-        prompt = f"""You are Raava, an automotive expert. Analyze this car image and provide detailed information.
+        prompt = f"""You are a Raava luxury automotive specialist analyzing this vehicle image.
 
-Available cars in our inventory:
-{cars_list}
+Current Raava Inventory:
+{cars}
 
-Customer question: {question}
+Client Question: {question}
 
-Please provide:
-1. Car identification (make, model, approximate year if visible)
-2. Whether this car or similar model is in our inventory
-3. Key features visible in the image
-4. Any other relevant details
+Provide an expert analysis including:
+1. Vehicle identification (make, model, approximate year)
+2. Key distinguishing features visible
+3. Whether similar vehicles are available in our inventory
+4. Market positioning and typical values for this type of vehicle
+5. Relevant ownership considerations
 
-Be helpful and informative."""
+Maintain Raava's sophisticated, knowledgeable tone - like an expert at a prestigious automotive establishment."""
 
         # Call Gemini with image
         response = model.generate_content([prompt, img])
 
-        return jsonify({"reply": response.text, "success": True})
+        return jsonify(
+            {
+                "reply": response.text + "\n\n[Replied by: Raava Image Analysis]",
+                "success": True,
+            }
+        )
 
     except Exception as e:
         print(f"Image chat error: {str(e)}")
         return (
             jsonify(
                 {
-                    "reply": f"I couldn't analyze the image. Error: {str(e)}",
+                    "reply": f"I apologize, but I couldn't analyze the image properly. Error: {str(e)}",
                     "success": False,
                 }
             ),
@@ -268,7 +356,6 @@ def text_to_speech():
         response = requests.post(url, json=payload, headers=headers)
 
         if response.status_code == 200:
-            # Convert audio to base64
             audio_base64 = base64.b64encode(response.content).decode("utf-8")
             return jsonify({"success": True, "audio": audio_base64})
         else:
@@ -293,10 +380,8 @@ def text_to_speech():
 @app.route("/api/speech-to-text", methods=["POST"])
 def speech_to_text():
     """Convert speech to text using browser's built-in Web Speech API"""
-    # Note: The actual STT is handled on the client side using Web Speech API
-    # This endpoint is kept for potential future server-side processing
     return jsonify({"success": True, "message": "STT is handled client-side"})
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5000)

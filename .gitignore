@@ -1,2 +1,5 @@
 .env
 raavavenv/
+__pycache__/
+agents/__pycache__/
+langgraph/__pycache__/
