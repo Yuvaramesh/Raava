@@ -1,5 +1,5 @@
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
 from dotenv import load_dotenv
 from typing import Dict, Any
@@ -16,9 +16,9 @@ class ConsignerAgent:
     """
 
     def __init__(self):
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash-lite",
-            google_api_key=os.getenv("GEMINI_API_KEY"),
+        self.llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            api_key=os.getenv("OPENAI_API_KEY"),
             temperature=0.7,
         )
 

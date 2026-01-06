@@ -11,34 +11,30 @@ from langgraph.edges import router
 
 def create_graph():
     """
-    Creates the Raava luxury automotive multi-agent workflow.
+    Creates the Raava luxury automotive multi-agent workflow with booking flow support.
 
     Architecture:
     1. Client inquiry enters via supervisor
     2. Supervisor analyzes and routes to appropriate specialist
-    3. Specialist provides expert consultation
-    4. Workflow completes
+    3. Specialist provides expert consultation and processes bookings
+    4. Workflow completes with order confirmation in MongoDB
 
     Agents:
     - Supervisor: Intelligent routing and general inquiries
-    - Concierge: Luxury vehicle acquisition and financing
+    - Concierge: Luxury vehicle acquisition, financing, and booking flow
     - Service Manager: Maintenance and service coordination
     - Consigner: Vehicle listing and valuation services
     """
 
-    # Initialize the state graph with our AgentState schema
     workflow = StateGraph(AgentState)
 
-    # Add specialist nodes
     workflow.add_node("supervisor", supervisor_node)
     workflow.add_node("concierge", concierge_node)
     workflow.add_node("service_manager", service_manager_node)
     workflow.add_node("consigner", consigner_node)
 
-    # Set supervisor as the entry point (first point of contact)
     workflow.set_entry_point("supervisor")
 
-    # Add conditional routing from supervisor to specialists
     workflow.add_conditional_edges(
         "supervisor",
         router,
@@ -50,11 +46,8 @@ def create_graph():
         },
     )
 
-    # After each specialist completes their consultation, end the workflow
-    # (In future versions, we could route back to supervisor for follow-ups)
     workflow.add_edge("concierge", END)
     workflow.add_edge("service_manager", END)
     workflow.add_edge("consigner", END)
 
-    # Compile the graph into an executable workflow
     return workflow.compile()

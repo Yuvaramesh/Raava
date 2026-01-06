@@ -16,46 +16,48 @@ async def supervisor_node(state):
     The Raava Supervisor - Intelligent routing for luxury automotive inquiries.
 
     Analyzes client requests and routes to appropriate specialist:
-    - Concierge: Vehicle acquisition, financing, marketplace guidance
+    - Concierge: Vehicle acquisition, financing, marketplace guidance, BOOKING FLOW
     - Service Manager: Maintenance, repairs, upgrades, service coordination
     - Consigner: Vehicle listings, valuations, market strategy
     """
     messages = state["messages"]
 
-    # Get the latest user message for context
     latest_message = messages[-1].content if messages else ""
 
-    # Create context-aware system message
     system_context = (
         f"{supervisor_prompt}\n\nLatest client inquiry: {latest_message[:200]}"
     )
 
-    # Get routing decision from supervisor
     response = await supervisor_llm.ainvoke(
         [{"role": "system", "content": system_context}]
         + [_convert_message(msg) for msg in messages]
     )
 
-    # Handle direct supervisor responses (when routing to __end__)
     if response.next_agent == "__end__":
-        # Supervisor handles this inquiry directly
         welcome_message = _generate_supervisor_response(latest_message)
         return {
             "messages": [AIMessage(content=welcome_message)],
             "next_agent": "__end__",
+            "conversation_phase": "selection",
+            "selected_car": "",
+            "booking_data": {},
         }
 
-    # Log routing decision (useful for debugging and improving)
     print(f"🎯 Routing Decision: {response.next_agent}")
     print(f"💭 Reasoning: {response.reasoning}")
 
-    return {"next_agent": response.next_agent}
+    return {
+        "next_agent": response.next_agent,
+        "conversation_phase": "selection",
+        "selected_car": "",
+        "booking_data": {},
+    }
 
 
 async def concierge_node(state):
     """
     The Raava AI Concierge - Luxury vehicle acquisition specialist.
-    Handles purchases, financing, marketplace navigation, and buyer facilitation.
+    Handles purchases, financing, rentals, and complete booking flow with personal data collection.
     """
     return await concierge.call(state)
 
@@ -94,8 +96,14 @@ def _generate_supervisor_response(query: str) -> str:
     """
     query_lower = query.lower()
 
-    # Greeting detection
-    greetings = ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"]
+    greetings = [
+        "hello",
+        "hi",
+        "hey",
+        "good morning",
+        "good afternoon",
+        "good evening",
+    ]
     if any(greeting in query_lower for greeting in greetings):
         return """Good day, and welcome to Raava - your personal luxury automotive concierge service.
 
@@ -110,7 +118,6 @@ How may we serve you today?
 
 [Replied by: Raava Supervisor]"""
 
-    # Service overview request
     if "raava" in query_lower or "about" in query_lower or "service" in query_lower:
         return """Welcome to Raava - the UK's premier luxury automotive concierge platform.
 
@@ -129,7 +136,6 @@ What brings you to Raava today?
 
 [Replied by: Raava Supervisor]"""
 
-    # Economy car polite decline
     economy_brands = [
         "kia",
         "hyundai",
@@ -142,15 +148,14 @@ What brings you to Raava today?
         "fiesta",
     ]
     if any(brand in query_lower for brand in economy_brands):
-        return """Thank you for your inquiry. Raava specializes exclusively in luxury, performance, and sports vehicles from prestigious marques such as Ferrari, Porsche, Lamborghini, McLaren, Aston Martin, and similar distinguished manufacturers.
+        return """Thank you for your inquiry. Raava specializes exclusively in luxury, performance, and sports vehicles from prestigious marques.
 
-For mainstream and economy vehicles, we'd recommend exploring AutoTrader or CarGurus, which offer excellent service for those categories.
+For mainstream and economy vehicles, we'd recommend exploring AutoTrader or CarGurus.
 
 Should you have interest in high-end or performance vehicles in the future, we'd be delighted to assist.
 
 [Replied by: Raava Supervisor]"""
 
-    # Default welcoming response
     return """Welcome to Raava. To provide you with the most valuable assistance, could you share a bit more about what you're looking for?
 
 Are you interested in:

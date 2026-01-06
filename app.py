@@ -2,14 +2,15 @@ from flask import Flask, render_template, request, jsonify
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
-import google.generativeai as genai
-from PIL import Image
+import base64
 import requests
 from io import BytesIO
-import base64
+from PIL import Image
+from langchain_openai import ChatOpenAI
 from langgraph.workflow import create_graph
 from langchain_core.messages import HumanMessage, AIMessage
 import asyncio
+from services.booking_service import BookingService
 
 load_dotenv()
 app = Flask(__name__)
@@ -19,9 +20,10 @@ client = MongoClient(os.getenv("MONGO_CONNECTION_STRING"))
 db = client["Raava_Sales"]
 collection = db["Cars"]
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-2.5-flash-lite")
+openai_client = ChatOpenAI(
+    model="gpt-4o-mini",
+    api_key=os.getenv("OPENAI_API_KEY"),
+)
 
 # ElevenLabs Configuration
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
@@ -29,6 +31,8 @@ ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "mCQMfsqGDT6IDkEKR20a")
 
 # Initialize Raava Luxury Automotive Concierge System
 graph = create_graph()
+
+booking_service = BookingService()
 
 
 def run_async(coro):
@@ -278,6 +282,11 @@ def chat_with_image():
         # Open and prepare image
         img = Image.open(file.stream)
 
+        # Convert image to base64 for OpenAI API
+        img_byte_arr = BytesIO()
+        img.save(img_byte_arr, format="PNG")
+        img_base64 = base64.b64encode(img_byte_arr.getvalue()).decode("utf-8")
+
         # Get current inventory for context
         cars = get_car_context()
 
@@ -297,12 +306,23 @@ Provide an expert analysis including:
 
 Maintain Raava's sophisticated, knowledgeable tone - like an expert at a prestigious automotive establishment."""
 
-        # Call Gemini with image
-        response = model.generate_content([prompt, img])
+        from langchain_core.messages import HumanMessage
+
+        message = HumanMessage(
+            content=[
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{img_base64}"},
+                },
+            ]
+        )
+
+        response = openai_client.invoke([message])
 
         return jsonify(
             {
-                "reply": response.text + "\n\n[Replied by: Raava Image Analysis]",
+                "reply": response.content + "\n\n[Replied by: Raava Image Analysis]",
                 "success": True,
             }
         )
@@ -381,6 +401,63 @@ def text_to_speech():
 def speech_to_text():
     """Convert speech to text using browser's built-in Web Speech API"""
     return jsonify({"success": True, "message": "STT is handled client-side"})
+
+
+@app.route("/api/booking", methods=["POST"])
+def create_booking():
+    """Create a new car booking/rental"""
+    try:
+        booking_data = request.json
+
+        # Validate booking data
+        is_valid, validation_msg = booking_service.validate_booking_data(booking_data)
+        if not is_valid:
+            return jsonify({"success": False, "message": validation_msg}), 400
+
+        # Create the order
+        result = booking_service.create_order(booking_data)
+
+        if result["success"]:
+            summary = booking_service.get_booking_summary(booking_data)
+            return jsonify(
+                {
+                    "success": True,
+                    "order_id": result["order_id"],
+                    "confirmation": summary,
+                }
+            )
+        else:
+            return jsonify(result), 500
+
+    except Exception as e:
+        print(f"Booking error: {str(e)}")
+        return (
+            jsonify({"success": False, "message": f"Error creating booking: {str(e)}"}),
+            500,
+        )
+
+
+@app.route("/api/booking/<order_id>", methods=["GET"])
+def get_booking(order_id):
+    """Retrieve booking details by order ID"""
+    try:
+        booking = booking_service.get_order(order_id)
+        if booking:
+            return jsonify({"success": True, "booking": booking})
+        else:
+            return jsonify({"success": False, "message": "Booking not found"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/customer-bookings/<email>", methods=["GET"])
+def get_customer_bookings(email):
+    """Get all bookings for a customer"""
+    try:
+        bookings = booking_service.get_customer_orders(email)
+        return jsonify({"success": True, "bookings": bookings, "total": len(bookings)})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
 if __name__ == "__main__":
