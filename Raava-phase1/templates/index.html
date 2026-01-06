@@ -93,7 +93,7 @@
         color: white;
       }
 
-      /* Search Section */
+      /* Compact Search Section */
       .search-section {
         background: white;
         padding: 20px;
@@ -183,7 +183,7 @@
         font-size: 16px;
       }
 
-      /* Car Grid */
+      /* Compact Car Grid */
       .cars-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -245,38 +245,16 @@
         font-weight: 700;
         color: #333;
         margin-bottom: 8px;
-        min-height: 28px;
       }
 
       .car-make {
         display: inline-block;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 4px 12px;
+        padding: 3px 10px;
         border-radius: 16px;
         font-size: 11px;
         font-weight: 600;
-        margin-bottom: 12px;
-      }
-
-      .car-details {
-        font-size: 12px;
-        color: #666;
-        margin-bottom: 12px;
-        line-height: 1.6;
-      }
-
-      .car-details-row {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 4px;
-        padding: 4px 0;
-      }
-
-      .car-price {
-        font-size: 20px;
-        font-weight: 700;
-        color: #667eea;
         margin-bottom: 12px;
       }
 
@@ -321,9 +299,9 @@
       .modal-content {
         background: white;
         border-radius: 16px;
-        max-width: 900px;
+        max-width: 800px;
         width: 100%;
-        max-height: 90vh;
+        max-height: 85vh;
         overflow-y: auto;
         position: relative;
         animation: slideUp 0.3s ease;
@@ -362,15 +340,14 @@
 
       .gallery {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
         gap: 10px;
         padding: 20px;
-        background: #f5f7fa;
       }
 
       .gallery img {
         width: 100%;
-        height: 150px;
+        height: 180px;
         object-fit: cover;
         border-radius: 10px;
         cursor: pointer;
@@ -382,66 +359,7 @@
       }
 
       .modal-info {
-        padding: 25px;
-      }
-
-      .modal-section {
-        margin-bottom: 20px;
-      }
-
-      .modal-section h3 {
-        font-size: 16px;
-        font-weight: 700;
-        color: #333;
-        margin-bottom: 10px;
-        border-bottom: 2px solid #667eea;
-        padding-bottom: 8px;
-      }
-
-      .modal-section p {
-        font-size: 13px;
-        color: #666;
-        line-height: 1.8;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-      }
-
-      .modal-buttons {
-        display: flex;
-        gap: 10px;
-        margin-top: 25px;
-      }
-
-      .modal-btn {
-        flex: 1;
-        padding: 12px;
-        border: none;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 14px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-      }
-
-      .modal-btn-primary {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-      }
-
-      .modal-btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-      }
-
-      .modal-btn-secondary {
-        background: white;
-        color: #667eea;
-        border: 2px solid #667eea;
-      }
-
-      .modal-btn-secondary:hover {
-        background: #667eea;
-        color: white;
+        padding: 20px 25px;
       }
 
       /* Loading and Empty States */
@@ -494,15 +412,6 @@
         .logo {
           font-size: 20px;
         }
-
-        .modal-content {
-          max-height: 95vh;
-          margin: auto;
-        }
-
-        .modal-buttons {
-          flex-direction: column;
-        }
       }
     </style>
   </head>
@@ -533,7 +442,7 @@
             type="text"
             id="searchInput"
             class="search-input"
-            placeholder="🔍 Search for cars (e.g., Peugeot 208, Ferrari...)"
+            placeholder="🔍 Search for cars (e.g., Ford, Nissan, Golf...)"
             onkeyup="handleSearch()"
           />
         </div>
@@ -550,7 +459,6 @@
             <label class="filter-label">Sort By</label>
             <select id="sortFilter" onchange="applyFilters()">
               <option value="name">Name (A-Z)</option>
-              <option value="price">Price (Low to High)</option>
             </select>
           </div>
 
@@ -583,9 +491,11 @@
     <script>
       let allCars = [];
       let filteredCars = [];
+      let currentCarContext = null;
 
       document.addEventListener("DOMContentLoaded", () => {
         loadCars();
+        loadMakes();
       });
 
       async function loadCars() {
@@ -593,141 +503,74 @@
           const response = await fetch("/api/cars");
           const data = await response.json();
 
-          console.log("Raw data:", data); // Debug log
-
-          if (data.success && data.cars) {
+          if (data.success) {
             allCars = data.cars;
-            console.log("Loaded cars:", allCars); // Debug log
-
-            // Extract unique makes
-            loadMakesFromCars();
-
             filteredCars = allCars;
             displayCars(filteredCars);
             updateStats();
           } else {
-            showError("No cars data received");
+            showError(data.message);
           }
         } catch (error) {
-          console.error("Error loading cars:", error);
-          showError("Failed to load cars: " + error.message);
+          showError("Failed to load cars");
         }
       }
 
-      function loadMakesFromCars() {
-        const makes = new Set();
-        allCars.forEach((car) => {
-          const make = (car.key_information?.make || "Unknown").trim();
-          makes.add(make);
-        });
+      async function loadMakes() {
+        try {
+          const response = await fetch("/api/makes");
+          const data = await response.json();
 
-        console.log("Extracted makes:", Array.from(makes)); // Debug
-
-        const select = document.getElementById("makeFilter");
-        const options = select.querySelectorAll("option:not(:first-child)");
-        options.forEach((opt) => opt.remove()); // Remove old options
-
-        const sortedMakes = Array.from(makes).sort();
-        sortedMakes.forEach((make) => {
-          const option = document.createElement("option");
-          option.value = make;
-          option.textContent = make;
-          select.appendChild(option);
-        });
-      }
-
-      function extractPrice(pricingText) {
-        if (!pricingText) return "POA";
-        const match = pricingText.match(/£([\d,]+)/);
-        return match ? "£" + match[1] : "POA";
-      }
-
-      function extractFirstLine(text) {
-        if (!text) return "";
-        const lines = text.split("\n").filter((line) => line.trim());
-        return lines[0] || "";
-      }
-
-      function extractDetails(overviewText) {
-        if (!overviewText) return {};
-
-        const details = {};
-        const lines = overviewText.split("\n").filter((line) => line.trim());
-
-        lines.forEach((line) => {
-          if (line.includes(":")) {
-            const [key, value] = line.split(":").map((s) => s.trim());
-            details[key] = value;
+          if (data.success) {
+            const select = document.getElementById("makeFilter");
+            data.makes.forEach((make) => {
+              const option = document.createElement("option");
+              option.value = make;
+              option.textContent = make;
+              select.appendChild(option);
+            });
           }
-        });
-
-        return details;
+        } catch (error) {
+          console.error("Failed to load makes");
+        }
       }
 
       function displayCars(cars) {
         const grid = document.getElementById("carsGrid");
 
-        if (!cars || cars.length === 0) {
+        if (cars.length === 0) {
           grid.innerHTML =
             '<div class="empty-state"><h2>No cars found</h2><p>Try adjusting your filters</p></div>';
           return;
         }
 
         grid.innerHTML = cars
-          .map((car, index) => {
-            const images = Array.isArray(car.images)
-              ? car.images
-              : [car.images];
-            const title = car.key_information?.title || "Unknown Car";
-            const make = car.key_information?.make || "Unknown";
-            const price = extractPrice(car.pricing);
-            const details = extractDetails(car.overview);
-            const firstImage =
-              images && images.length > 0
-                ? images[0]
-                : "https://via.placeholder.com/400x300?text=No+Image";
+          .map((car) => {
+            const images = Array.isArray(car.image) ? car.image : [car.image];
+            const make = car.name.split(" ")[0];
 
             return `
-              <div class="car-card" onclick="showCarDetails(${index})">
-                <div class="car-image-container">
-                  <img src="${firstImage}" alt="${title}" class="car-image" 
-                    onerror="this.src='https://via.placeholder.com/400x300?text=Car+Image'">
-                  ${
-                    images && images.length > 1
-                      ? `<span class="image-count">📷 ${images.length} photos</span>`
-                      : ""
-                  }
-                </div>
-                <div class="car-info">
-                  <h3 class="car-name">${title}</h3>
-                  <span class="car-make">${make}</span>
-                  
-                  <div class="car-details">
-                    ${
-                      details.Mileage
-                        ? `<div class="car-details-row"><span>📍 Mileage:</span><span>${details.Mileage}</span></div>`
-                        : ""
-                    }
-                    ${
-                      details["Fuel type"]
-                        ? `<div class="car-details-row"><span>⛽ Fuel:</span><span>${details["Fuel type"]}</span></div>`
-                        : ""
-                    }
-                    ${
-                      details["Body type"]
-                        ? `<div class="car-details-row"><span>🚗 Body:</span><span>${details["Body type"]}</span></div>`
-                        : ""
-                    }
-                  </div>
-                  
-                  <div class="car-price">${price}</div>
-                  
-                  <button class="view-details" onclick="event.stopPropagation(); showCarDetails(${index})">
-                    View Details
-                  </button>
-                </div>
-              </div>
-            `;
+                    <div class="car-card" onclick="showCarDetails('${
+                      car.name
+                    }')">
+                        <div class="car-image-container">
+                            <img src="${images[0]}" alt="${
+              car.name
+            }" class="car-image" 
+                                 onerror="this.src='https://via.placeholder.com/400x300?text=No+Image'">
+                            ${
+                              images.length > 1
+                                ? `<span class="image-count">📷 ${images.length} photos</span>`
+                                : ""
+                            }
+                        </div>
+                        <div class="car-info">
+                            <h3 class="car-name">${car.name}</h3>
+                            <span class="car-make">${make}</span>
+                            <button class="view-details">View Details</button>
+                        </div>
+                    </div>
+                `;
           })
           .join("");
       }
@@ -735,74 +578,27 @@
       function handleSearch() {
         const query = document
           .getElementById("searchInput")
-          .value.toLowerCase()
-          .trim();
-
-        const make = document.getElementById("makeFilter").value.trim();
-
-        filteredCars = allCars.filter((car) => {
-          const title = (car.key_information?.title || "").toLowerCase();
-          const carMake = (car.key_information?.make || "").trim();
-
-          const matchesSearch =
-            !query ||
-            title.includes(query) ||
-            carMake.toLowerCase().includes(query);
-          const matchesMake = !make || carMake === make;
-
-          return matchesSearch && matchesMake;
-        });
-
+          .value.toLowerCase();
+        filteredCars = allCars.filter((car) =>
+          car.name.toLowerCase().includes(query)
+        );
         displayCars(filteredCars);
         updateStats();
       }
 
       function applyFilters() {
-        const make = document.getElementById("makeFilter").value.trim();
-        const sort = document.getElementById("sortFilter").value;
+        const make = document.getElementById("makeFilter").value;
         const search = document
           .getElementById("searchInput")
-          .value.toLowerCase()
-          .trim();
+          .value.toLowerCase();
 
-        console.log("Filtering with make:", make, "search:", search); // Debug
-
-        let filtered = allCars.filter((car) => {
-          const carMake = (car.key_information?.make || "").trim();
-          const carTitle = (car.key_information?.title || "").trim();
-
-          const matchesMake = !make || carMake === make;
+        filteredCars = allCars.filter((car) => {
+          const matchesMake = !make || car.name.startsWith(make);
           const matchesSearch =
-            !search ||
-            carTitle.toLowerCase().includes(search) ||
-            carMake.toLowerCase().includes(search);
-
-          console.log(
-            `Car: ${carTitle}, carMake: ${carMake}, matches: ${
-              matchesMake && matchesSearch
-            }`
-          ); // Debug
+            !search || car.name.toLowerCase().includes(search);
           return matchesMake && matchesSearch;
         });
 
-        // Sort
-        if (sort === "price") {
-          filtered.sort((a, b) => {
-            const priceA =
-              parseInt(extractPrice(a.pricing).replace(/[£,]/g, "")) || 0;
-            const priceB =
-              parseInt(extractPrice(b.pricing).replace(/[£,]/g, "")) || 0;
-            return priceA - priceB;
-          });
-        } else {
-          filtered.sort((a, b) => {
-            const titleA = (a.key_information?.title || "").toLowerCase();
-            const titleB = (b.key_information?.title || "").toLowerCase();
-            return titleA.localeCompare(titleB);
-          });
-        }
-
-        filteredCars = filtered;
         displayCars(filteredCars);
         updateStats();
       }
@@ -810,119 +606,59 @@
       function clearFilters() {
         document.getElementById("searchInput").value = "";
         document.getElementById("makeFilter").value = "";
-        document.getElementById("sortFilter").value = "name";
-
-        filteredCars = [...allCars];
+        filteredCars = allCars;
         displayCars(filteredCars);
         updateStats();
-
-        console.log("Filters cleared, showing all cars"); // Debug
       }
 
       function updateStats() {
         document.getElementById("totalCars").textContent = filteredCars.length;
       }
 
-      function showCarDetails(index) {
-        const car = filteredCars[index];
-        if (!car) return;
+      async function showCarDetails(carName) {
+        try {
+          const response = await fetch(
+            `/api/car/${encodeURIComponent(carName)}`
+          );
+          const data = await response.json();
 
-        const images = Array.isArray(car.images) ? car.images : [car.images];
-        const title = car.key_information?.title || "Unknown Car";
-        const make = car.key_information?.make || "Unknown";
-        const price = extractPrice(car.pricing);
+          if (data.success) {
+            const car = data.car;
+            const images = Array.isArray(car.image) ? car.image : [car.image];
+            currentCarContext = car.name;
 
-        const modalContent = `
-          <div class="gallery">
-            ${
-              images && images.length > 0
-                ? images
-                    .map(
-                      (img) =>
-                        `<img src="${img}" alt="${title}" 
-                          onclick="window.open('${img}', '_blank')"
-                          onerror="this.src='https://via.placeholder.com/300x200?text=Image'">`
-                    )
-                    .join("")
-                : '<p style="grid-column: 1/-1; color: #999;">No images available</p>'
-            }
-          </div>
-          <div class="modal-info">
-            <h2 class="car-name">${title}</h2>
-            <span class="car-make">${make}</span>
-            
-            <div class="modal-section">
-              <h3>💰 Price</h3>
-              <p>${price}</p>
-            </div>
+            const modalContent = `
+                        <div class="gallery">
+                            ${images
+                              .map(
+                                (img) =>
+                                  `<img src="${img}" alt="${car.name}" onclick="window.open('${img}', '_blank')">`
+                              )
+                              .join("")}
+                        </div>
+                        <div class="modal-info">
+                            <h2 class="car-name">${car.name}</h2>
+                            <span class="car-make">${
+                              car.name.split(" ")[0]
+                            }</span>
+                            <p style="margin-top: 16px; color: #666; font-size: 14px;">Click on any image to view in full size</p>
+                            <button class="btn btn-primary" style="margin-top: 16px; width: 100%;" onclick="openChatWithCar('${
+                              car.name
+                            }')">
+                                💬 Ask AI about this car
+                            </button>
+                        </div>
+                    `;
 
-            ${
-              car.pricing
-                ? `<div class="modal-section">
-                    <h3>📋 Pricing Details</h3>
-                    <p>${(car.pricing || "").replace(/\n/g, "<br>")}</p>
-                  </div>`
-                : ""
-            }
-
-            ${
-              car.overview
-                ? `<div class="modal-section">
-                    <h3>📊 Overview</h3>
-                    <p>${(car.overview || "").replace(/\n/g, "<br>")}</p>
-                  </div>`
-                : ""
-            }
-
-            ${
-              car.running_costs
-                ? `<div class="modal-section">
-                    <h3>🔧 Running Costs</h3>
-                    <p>${(car.running_costs || "").replace(/\n/g, "<br>")}</p>
-                  </div>`
-                : ""
-            }
-
-            ${
-              car.vehicle_history
-                ? `<div class="modal-section">
-                    <h3>📝 Vehicle History</h3>
-                    <p>${(car.vehicle_history || "").replace(/\n/g, "<br>")}</p>
-                  </div>`
-                : ""
-            }
-
-            ${
-              car.meet_seller
-                ? `<div class="modal-section">
-                    <h3>👤 Seller Information</h3>
-                    <p>${(car.meet_seller || "").replace(/\n/g, "<br>")}</p>
-                  </div>`
-                : ""
-            }
-
-            <div class="modal-buttons">
-              <a href="${
-                car.url || "#"
-              }" target="_blank" rel="noopener noreferrer" class="modal-btn modal-btn-primary">
-                View on AutoTrader
-              </a>
-              <button class="modal-btn modal-btn-secondary" onclick="openChatWithCar('${title.replace(
-                /'/g,
-                "\\'"
-              )}')">
-                💬 Chat with AI
-              </button>
-            </div>
-          </div>
-        `;
-
-        document.getElementById("modalContent").innerHTML = modalContent;
-        document.getElementById("carModal").classList.add("active");
+            document.getElementById("modalContent").innerHTML = modalContent;
+            document.getElementById("carModal").classList.add("active");
+          }
+        } catch (error) {
+          console.error("Failed to load car details");
+        }
       }
 
       function openChatWithCar(carName) {
-        closeModal();
         window.location.href = `/chat-page?car=${encodeURIComponent(carName)}`;
       }
 
@@ -939,7 +675,6 @@
       function showError(message) {
         const grid = document.getElementById("carsGrid");
         grid.innerHTML = `<div class="empty-state"><h2>Error</h2><p>${message}</p></div>`;
-        console.error("Error:", message);
       }
     </script>
   </body>

@@ -94,40 +94,43 @@ def get_cars():
 
         # Filter by search query
         if search_query:
-            cars = [car for car in cars if search_query in car["name"].lower()]
+            cars = [
+                car
+                for car in cars
+                if search_query
+                in car.get("key_information", {}).get("title", "").lower()
+                or search_query
+                in car.get("key_information", {}).get("make", "").lower()
+            ]
 
         # Filter by make
         if make_filter:
-            cars = [car for car in cars if make_filter in car["name"].lower()]
+            cars = [
+                car
+                for car in cars
+                if make_filter in car.get("key_information", {}).get("make", "").lower()
+            ]
 
         # Sort cars
-        if sort_by == "name":
-            cars = sorted(cars, key=lambda x: x["name"])
+        if sort_by == "price":
+            cars = sorted(
+                cars,
+                key=lambda x: int(
+                    x.get("pricing", "").split("£")[1].split("\n")[0].replace(",", "")
+                    if "£" in x.get("pricing", "")
+                    else 999999
+                ),
+            )
+        else:  # name
+            cars = sorted(
+                cars,
+                key=lambda x: x.get("key_information", {}).get("title", "").lower(),
+            )
 
         return jsonify({"success": True, "cars": cars, "total": len(cars)})
 
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route("/api/car/<car_name>", methods=["GET"])
-def get_car_details(car_name):
-    """Get details for a specific car"""
-    try:
-        doc = collection.find_one({})
-        if not doc:
-            return jsonify({"success": False, "message": "No cars found"}), 404
-
-        car = next(
-            (c for c in doc["cars"] if c["name"].lower() == car_name.lower()), None
-        )
-
-        if car:
-            return jsonify({"success": True, "car": car})
-        else:
-            return jsonify({"success": False, "message": "Car not found"}), 404
-
-    except Exception as e:
+        print(f"Error in get_cars: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
 
@@ -136,17 +139,38 @@ def get_makes():
     """Get all unique car makes"""
     try:
         doc = collection.find_one({})
-        if not doc:
+        if not doc or "cars" not in doc:
             return jsonify({"success": False, "message": "No cars found"}), 404
 
         makes = set()
         for car in doc["cars"]:
-            make = car["name"].split()[0]
+            make = car.get("key_information", {}).get("make", "Unknown")
             makes.add(make)
 
         return jsonify({"success": True, "makes": sorted(list(makes))})
 
     except Exception as e:
+        print(f"Error in get_makes: {str(e)}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/car/<int:car_id>", methods=["GET"])
+def get_car_details(car_id):
+    """Get details for a specific car by index"""
+    try:
+        doc = collection.find_one({})
+        if not doc or "cars" not in doc:
+            return jsonify({"success": False, "message": "No cars found"}), 404
+
+        cars = doc["cars"]
+        if car_id < 0 or car_id >= len(cars):
+            return jsonify({"success": False, "message": "Car not found"}), 404
+
+        car = cars[car_id]
+        return jsonify({"success": True, "car": car})
+
+    except Exception as e:
+        print(f"Error in get_car_details: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
 

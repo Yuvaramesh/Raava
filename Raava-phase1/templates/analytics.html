@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Raava Analytics Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 100%);
+        color: #e0e0e0;
+        padding: 20px;
+      }
+
+      .dashboard {
+        max-width: 1600px;
+        margin: 0 auto;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding: 20px;
+        background: rgba(20, 20, 40, 0.8);
+        border: 1px solid rgba(212, 175, 55, 0.2);
+        border-radius: 8px;
+      }
+
+      .header h1 {
+        color: #d4af37;
+        font-size: 32px;
+        font-weight: 300;
+        letter-spacing: 2px;
+      }
+
+      .date-range {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .date-range input,
+      .date-range select {
+        background: rgba(40, 40, 70, 0.8);
+        border: 1px solid rgba(212, 175, 55, 0.3);
+        color: #e0e0e0;
+        padding: 8px 12px;
+        border-radius: 4px;
+      }
+
+      .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+
+      .metric-card {
+        background: rgba(20, 20, 40, 0.8);
+        border: 1px solid rgba(212, 175, 55, 0.2);
+        border-radius: 8px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .metric-label {
+        font-size: 12px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+      }
+
+      .metric-value {
+        font-size: 32px;
+        color: #d4af37;
+        font-weight: 300;
+        margin-bottom: 10px;
+      }
+
+      .metric-change {
+        font-size: 12px;
+        color: #4ade80;
+      }
+
+      .metric-change.negative {
+        color: #f87171;
+      }
+
+      .charts-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+
+      .chart-card {
+        background: rgba(20, 20, 40, 0.8);
+        border: 1px solid rgba(212, 175, 55, 0.2);
+        border-radius: 8px;
+        padding: 20px;
+      }
+
+      .chart-title {
+        color: #d4af37;
+        font-size: 16px;
+        margin-bottom: 15px;
+        font-weight: 500;
+      }
+
+      .chart-wrapper {
+        position: relative;
+        height: 300px;
+      }
+
+      .data-table {
+        width: 100%;
+        background: rgba(20, 20, 40, 0.8);
+        border: 1px solid rgba(212, 175, 55, 0.2);
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 30px;
+      }
+
+      .data-table thead {
+        background: rgba(50, 50, 80, 0.6);
+        border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+      }
+
+      .data-table th {
+        color: #d4af37;
+        padding: 15px;
+        text-align: left;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 500;
+      }
+
+      .data-table td {
+        padding: 12px 15px;
+        border-bottom: 1px solid rgba(212, 175, 55, 0.1);
+      }
+
+      .data-table tr:hover {
+        background: rgba(212, 175, 55, 0.05);
+      }
+
+      .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .status-active {
+        background: rgba(74, 222, 128, 0.2);
+        color: #4ade80;
+      }
+
+      .status-pending {
+        background: rgba(248, 113, 113, 0.2);
+        color: #f87171;
+      }
+
+      .status-completed {
+        background: rgba(59, 130, 246, 0.2);
+        color: #3b82f6;
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-bottom: 20px;
+      }
+
+      button {
+        background: rgba(212, 175, 55, 0.15);
+        border: 1px solid rgba(212, 175, 55, 0.5);
+        color: #d4af37;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.3s ease;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      button:hover {
+        background: rgba(212, 175, 55, 0.25);
+        border-color: rgba(212, 175, 55, 0.8);
+      }
+
+      .loading {
+        text-align: center;
+        padding: 40px;
+        color: #888;
+      }
+
+      .spinner {
+        border: 3px solid rgba(212, 175, 55, 0.2);
+        border-top: 3px solid #d4af37;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="dashboard">
+      <!-- Header -->
+      <div class="header">
+        <div>
+          <h1>RAAVA ANALYTICS</h1>
+          <p
+            style="
+              color: #888;
+              font-size: 12px;
+              letter-spacing: 1px;
+              text-transform: uppercase;
+            "
+          >
+            Luxury Concierge Performance
+          </p>
+        </div>
+        <div class="date-range">
+          <input type="date" id="startDate" />
+          <span>to</span>
+          <input type="date" id="endDate" />
+          <select id="period">
+            <option value="7">Last 7 Days</option>
+            <option value="30">Last 30 Days</option>
+            <option value="90">Last 90 Days</option>
+          </select>
+          <button onclick="loadAnalytics()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- Key Metrics -->
+      <div class="metrics-grid" id="metricsGrid">
+        <div class="loading">
+          <div class="spinner"></div>
+          Loading analytics...
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="charts-container">
+        <div class="chart-card">
+          <div class="chart-title">📊 Daily Active Conversations</div>
+          <div class="chart-wrapper">
+            <canvas id="conversationChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-title">🚗 Top Brands Searched</div>
+          <div class="chart-wrapper">
+            <canvas id="brandsChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-title">💰 Finance Quotes by Type</div>
+          <div class="chart-wrapper">
+            <canvas id="financeChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-title">⭐ User Satisfaction</div>
+          <div class="chart-wrapper">
+            <canvas id="satisfactionChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Tables -->
+      <div style="margin-bottom: 20px">
+        <h2
+          style="
+            color: #d4af37;
+            margin-bottom: 20px;
+            font-size: 18px;
+            letter-spacing: 1px;
+          "
+        >
+          Recent Conversations
+        </h2>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>User ID</th>
+              <th>Intent</th>
+              <th>Messages</th>
+              <th>Duration</th>
+              <th>Status</th>
+              <th>Satisfaction</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id="conversationTable">
+            <tr>
+              <td
+                colspan="7"
+                style="text-align: center; padding: 40px; color: #888"
+              >
+                Loading data...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- User Insights -->
+      <div style="margin-bottom: 20px">
+        <h2
+          style="
+            color: #d4af37;
+            margin-bottom: 20px;
+            font-size: 18px;
+            letter-spacing: 1px;
+          "
+        >
+          User Preferences Insights
+        </h2>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Brand</th>
+              <th>Interest Count</th>
+              <th>Avg Budget</th>
+              <th>Popular Models</th>
+              <th>Trend</th>
+            </tr>
+          </thead>
+          <tbody id="insightsTable">
+            <tr>
+              <td
+                colspan="5"
+                style="text-align: center; padding: 40px; color: #888"
+              >
+                Loading insights...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button onclick="exportData()">📥 Export Report</button>
+        <button onclick="emailReport()">📧 Email Report</button>
+      </div>
+    </div>
+
+    <script>
+      // Initialize dates
+      const today = new Date();
+      const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      document.getElementById("endDate").valueAsDate = today;
+      document.getElementById("startDate").valueAsDate = sevenDaysAgo;
+
+      // Sample analytics data
+      const sampleAnalytics = {
+        total_conversations: 1247,
+        active_users: 342,
+        total_messages: 8934,
+        avg_satisfaction: 4.7,
+        conversations_with_quotes: 456,
+        marketplace_searches: 892,
+        finance_quotes_generated: 234,
+        conversions: 89,
+        daily_data: [
+          { date: "2026-01-01", conversations: 45, messages: 320 },
+          { date: "2026-01-02", conversations: 52, messages: 380 },
+          { date: "2026-01-03", conversations: 48, messages: 350 },
+          { date: "2026-01-04", conversations: 61, messages: 420 },
+          { date: "2026-01-05", conversations: 58, messages: 410 },
+        ],
+        brand_interests: {
+          Porsche: 245,
+          Ferrari: 198,
+          Lamborghini: 176,
+          McLaren: 142,
+          "Aston Martin": 131,
+        },
+        finance_types: {
+          PCP: 120,
+          HP: 89,
+          Lease: 15,
+          Bespoke: 10,
+        },
+        conversation_stages: {
+          Initial: 245,
+          Searching: 189,
+          Quotes: 92,
+          Transaction: 45,
+        },
+      };
+
+      // Load analytics
+      function loadAnalytics() {
+        renderMetrics(sampleAnalytics);
+        renderCharts(sampleAnalytics);
+        renderTables(sampleAnalytics);
+      }
+
+      // Render metric cards
+      function renderMetrics(data) {
+        const metricsHTML = `
+                <div class="metric-card">
+                    <div class="metric-label">Total Conversations</div>
+                    <div class="metric-value">${data.total_conversations.toLocaleString()}</div>
+                    <div class="metric-change">↑ 12.5% from previous period</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Active Users</div>
+                    <div class="metric-value">${data.active_users.toLocaleString()}</div>
+                    <div class="metric-change">↑ 8.3% from previous period</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Avg. Satisfaction</div>
+                    <div class="metric-value">${data.avg_satisfaction.toFixed(
+                      1
+                    )}/5</div>
+                    <div class="metric-change">↑ 0.2 points</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Conversion Rate</div>
+                    <div class="metric-value">${(
+                      (data.conversions / data.total_conversations) *
+                      100
+                    ).toFixed(1)}%</div>
+                    <div class="metric-change">↑ 2.1% from previous period</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Finance Quotes</div>
+                    <div class="metric-value">${
+                      data.finance_quotes_generated
+                    }</div>
+                    <div class="metric-change">↑ 15% from previous period</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Marketplace Searches</div>
+                    <div class="metric-value">${data.marketplace_searches}</div>
+                    <div class="metric-change">↑ 22% from previous period</div>
+                </div>
+            `;
+        document.getElementById("metricsGrid").innerHTML = metricsHTML;
+      }
+
+      // Render charts
+      function renderCharts(data) {
+        // Conversation chart
+        const convCtx = document
+          .getElementById("conversationChart")
+          .getContext("2d");
+        new Chart(convCtx, {
+          type: "line",
+          data: {
+            labels: data.daily_data.map((d) =>
+              new Date(d.date).toLocaleDateString("en-US", { weekday: "short" })
+            ),
+            datasets: [
+              {
+                label: "Daily Conversations",
+                data: data.daily_data.map((d) => d.conversations),
+                borderColor: "#d4af37",
+                backgroundColor: "rgba(212, 175, 55, 0.1)",
+                tension: 0.4,
+                fill: true,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: {
+                ticks: { color: "#888" },
+                grid: { color: "rgba(212, 175, 55, 0.1)" },
+              },
+              x: {
+                ticks: { color: "#888" },
+                grid: { color: "rgba(212, 175, 55, 0.1)" },
+              },
+            },
+          },
+        });
+
+        // Brands chart
+        const brandsCtx = document
+          .getElementById("brandsChart")
+          .getContext("2d");
+        new Chart(brandsCtx, {
+          type: "doughnut",
+          data: {
+            labels: Object.keys(data.brand_interests),
+            datasets: [
+              {
+                data: Object.values(data.brand_interests),
+                backgroundColor: [
+                  "#d4af37",
+                  "#c79720",
+                  "#a0790a",
+                  "#7a5a0a",
+                  "#534005",
+                ],
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: "#888" } } },
+          },
+        });
+
+        // Finance chart
+        const financeCtx = document
+          .getElementById("financeChart")
+          .getContext("2d");
+        new Chart(financeCtx, {
+          type: "bar",
+          data: {
+            labels: Object.keys(data.finance_types),
+            datasets: [
+              {
+                label: "Quotes Generated",
+                data: Object.values(data.finance_types),
+                backgroundColor: "rgba(212, 175, 55, 0.6)",
+                borderColor: "#d4af37",
+                borderWidth: 1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: {
+                ticks: { color: "#888" },
+                grid: { color: "rgba(212, 175, 55, 0.1)" },
+              },
+              x: {
+                ticks: { color: "#888" },
+                grid: { color: "rgba(212, 175, 55, 0.1)" },
+              },
+            },
+          },
+        });
+
+        // Satisfaction chart
+        const satCtx = document
+          .getElementById("satisfactionChart")
+          .getContext("2d");
+        new Chart(satCtx, {
+          type: "radar",
+          data: {
+            labels: [
+              "Responsiveness",
+              "Accuracy",
+              "Helpfulness",
+              "Ease of Use",
+              "Recommendations",
+            ],
+            datasets: [
+              {
+                label: "User Ratings",
+                data: [4.8, 4.7, 4.9, 4.6, 4.8],
+                borderColor: "#d4af37",
+                backgroundColor: "rgba(212, 175, 55, 0.1)",
+                pointBackgroundColor: "#d4af37",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              r: {
+                ticks: { color: "#888" },
+                grid: { color: "rgba(212, 175, 55, 0.1)" },
+              },
+            },
+          },
+        });
+      }
+
+      // Render tables
+      function renderTables(data) {
+        // Conversation table
+        const convTableHTML = `
+                <tr>
+                    <td>user_12345</td>
+                    <td>Buy</td>
+                    <td>24</td>
+                    <td>18 min</td>
+                    <td><span class="status-badge status-completed">Completed</span></td>
+                    <td>⭐⭐⭐⭐⭐ 5.0</td>
+                    <td>2026-01-05 14:30</td>
+                </tr>
+                <tr>
+                    <td>user_12346</td>
+                    <td>Finance</td>
+                    <td>12</td>
+                    <td>8 min</td>
+                    <td><span class="status-badge status-active">Active</span></td>
+                    <td>⭐⭐⭐⭐ 4.0</td>
+                    <td>2026-01-05 15:45</td>
+                </tr>
+                <tr>
+                    <td>user_12347</td>
+                    <td>Buy</td>
+                    <td>18</td>
+                    <td>15 min</td>
+                    <td><span class="status-badge status-completed">Completed</span></td>
+                    <td>⭐⭐⭐⭐⭐ 4.8</td>
+                    <td>2026-01-05 13:20</td>
+                </tr>
+            `;
+        document.getElementById("conversationTable").innerHTML = convTableHTML;
+
+        // Insights table
+        const insightsHTML = `
+                <tr>
+                    <td>Porsche</td>
+                    <td>245</td>
+                    <td>£250,000</td>
+                    <td>911 Turbo, Cayman GT4</td>
+                    <td style="color: #4ade80;">↑ Trending</td>
+                </tr>
+                <tr>
+                    <td>Ferrari</td>
+                    <td>198</td>
+                    <td>£320,000</td>
+                    <td>F8 Tributo, Roma</td>
+                    <td style="color: #4ade80;">↑ Trending</td>
+                </tr>
+                <tr>
+                    <td>Lamborghini</td>
+                    <td>176</td>
+                    <td>£280,000</td>
+                    <td>Huracán, Revuelto</td>
+                    <td style="color: #888;">→ Stable</td>
+                </tr>
+            `;
+        document.getElementById("insightsTable").innerHTML = insightsHTML;
+      }
+
+      // Export and email functions
+      function exportData() {
+        alert("Report exported as PDF");
+      }
+
+      function emailReport() {
+        alert("Report will be emailed to yuvi@10qbit.com");
+      }
+
+      // Load on page load
+      loadAnalytics();
+    </script>
+  </body>
+</html>
