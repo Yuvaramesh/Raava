@@ -8,7 +8,7 @@ import sys
 sys.path.append("..")
 
 from pymongo import MongoClient
-from config import MONGO_URI, LUXURY_MAKES
+from config import MONGO_CONNECTION_STRING, LUXURY_MAKES
 import json
 from datetime import datetime
 
@@ -227,7 +227,7 @@ def seed_database():
 
         # Connect to MongoDB
         print(f"Connecting to MongoDB...")
-        client = MongoClient(MONGO_URI)
+        client = MongoClient(MONGO_CONNECTION_STRING)
         db = client["Raava_Sales"]
         cars_collection = db["Cars"]
 
@@ -300,7 +300,7 @@ def load_from_json(filepath: str):
         print(f"✓ Found {len(cars)} cars in file")
 
         # Connect to MongoDB
-        client = MongoClient(MONGO_URI)
+        client = MongoClient(MONGO_CONNECTION_STRING)
         db = client["Raava_Sales"]
         cars_collection = db["Cars"]
 

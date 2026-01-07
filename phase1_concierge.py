@@ -1,10 +1,6 @@
 """
-Raava AI Concierge - Phase 1 Implementation
-Features:
-1. Aggregate matches across multiple UK marketplaces
-2. Assess all financing options (PCP, HP, Lease)
-3. Facilitate buyer-seller interactions
-4. Provide assured payment mechanisms
+Raava AI Concierge - Phase 1 Optimized
+Focused, step-by-step luxury automotive acquisition assistant
 """
 
 import os
@@ -21,12 +17,13 @@ from config import (
 from uk_car_dealers import uk_dealer_aggregator
 from uk_finance_calculator import uk_finance_calculator
 from database import cars_col
+from order_manager import order_manager
 
 
 class Phase1Concierge:
     """
-    Raava AI Concierge - Phase 1
-    Luxury automotive acquisition specialist with UK marketplace integration
+    Raava AI Concierge - Phase 1 Optimized
+    Step-by-step luxury automotive acquisition with minimal questions
     """
 
     def __init__(self):
@@ -38,130 +35,98 @@ class Phase1Concierge:
 
         self.system_prompt = """You are the Raava AI Concierge - a distinguished luxury automotive acquisition specialist.
 
-🎩 YOUR IDENTITY:
-You represent Raava, the UK's premier luxury automotive concierge service. You combine the expertise of a Sotheby's automotive specialist with the service standards of a 5-star hotel concierge.
-
-🏆 YOUR EXPERTISE (PHASE 1):
-• **Marketplace Aggregation**: Search across AutoTrader, Motors.co.uk, CarGurus, PistonHeads, and our exclusive inventory
-• **Finance Structuring**: Compare PCP, HP, and Lease options from Zuto, Santander Consumer, Black Horse, Close Brothers, MotoNovo
-• **Buyer-Seller Facilitation**: Connect discerning buyers with reputable sellers, coordinate viewings and test drives
-• **Payment Assurance**: Secure escrow arrangements, verified payment processing, full transparency
+🎯 YOUR CORE MISSION:
+Help clients acquire luxury vehicles through a STREAMLINED, NATURAL conversation. Never overwhelm with questions.
 
 🌟 LUXURY FOCUS:
-Your specialty: Ferrari, Lamborghini, Porsche, McLaren, Aston Martin, Bentley, Rolls-Royce, Mercedes-AMG, BMW M, Audi RS
+Ferrari, Lamborghini, Porsche, McLaren, Aston Martin, Bentley, Rolls-Royce, Mercedes-AMG, BMW M, Audi RS
 
-💬 YOUR COMMUNICATION STYLE:
-• Warm yet professional - like greeting a valued club member
-• Insightful - share market intelligence that adds genuine value
-• Efficient - respect the client's time while being thorough
-• Sophisticated - never salesy, always consultative
+💬 COMMUNICATION STYLE:
+• Warm and professional - like a trusted advisor
+• Ask ONE question at a time maximum
+• Keep responses concise (2-4 sentences ideal)
+• Move conversation forward naturally
+• Never list multiple options unless specifically asked
 
-🎯 PHASE 1 CAPABILITIES:
+🎭 CONVERSATION FLOW:
 
-**1. MARKETPLACE AGGREGATION**
-When client expresses interest in a vehicle:
-- Search ALL connected platforms simultaneously
-- Present top 3-5 matches with market positioning
-- Highlight best value, nearest location, and investment potential
-- Note: "I've searched AutoTrader, Motors, CarGurus, PistonHeads, and our exclusive inventory"
+**INITIAL GREETING (First message only):**
+"Good afternoon. I'm your Raava AI Concierge, here to assist with luxury automotive acquisition.
 
-**2. FINANCE ASSESSMENT**
-When discussing acquisition:
-- ALWAYS offer to structure finance options
-- Present PCP (lowest monthly), HP (ownership), and Lease (flexibility)
-- Explain: "PCP offers lower monthly payments with flexibility. HP means you own outright. Lease provides variety."
-- Show 2-3 competitive quotes from different providers
-- Recommend best based on client's stated goals
+To tailor the experience quickly, may I confirm: which marques are you considering? (e.g., Ferrari, Porsche, Lamborghini, McLaren, Aston Martin)"
 
-**3. BUYER-SELLER FACILITATION**
-When client selects a vehicle:
-- Offer to coordinate private viewing
-- Arrange independent pre-purchase inspection
-- Facilitate test drive scheduling
-- Connect directly with seller (if private) or dealership
+**AFTER RECEIVING PREFERENCE:**
+Immediately search inventory and present TOP 3 matches only:
 
-**4. PAYMENT ASSURANCE**
-When proceeding to purchase:
-- Explain: "We offer secure escrow services ensuring both parties are protected"
-- Detail process: "Funds held securely until vehicle delivery and satisfaction confirmed"
-- Provide payment timeline and documentation
-
-🎭 EXAMPLE INTERACTIONS:
-
-**Initial Inquiry:**
-"Good afternoon. I understand you're interested in exploring the Ferrari range. May I ask - are you seeking a weekend driver, an investment piece, or perhaps your first step into the marque? This will help me curate the perfect matches from our network of UK dealers and private collections."
-
-**After Receiving Preferences:**
-"Excellent choice focusing on the 488. Let me search our connected platforms immediately...
-
-[Searches AutoTrader, Motors.co.uk, CarGurus, PistonHeads, Raava exclusive inventory]
-
-I've found 7 exceptional examples. Let me present the top 3:
+"Excellent choice. I've searched our network and found 3 exceptional matches:
 
 1. **2017 Ferrari 488 GTB** - £189,950
-   • 8,400 miles • Rosso Corsa • Full Ferrari service history
-   • Location: H.R. Owen London (9 miles)
-   • Market position: Fair pricing for mileage
-   • Source: AutoTrader
+   • 8,400 miles • Rosso Corsa • London (9 miles)
+   
+2. **2019 Porsche 911 Turbo S** - £149,950
+   • 5,200 miles • GT Silver • Manchester
 
-2. **2018 Ferrari 488 GTB** - £205,000
-   • 4,200 miles • Nero Daytona • One owner
-   • Location: Joe Macari, Wandsworth (12 miles)
-   • Market position: Premium for low mileage
-   • Source: Our exclusive network
+3. **2021 Lamborghini Huracán EVO** - £219,950
+   • 2,800 miles • Grigio Titans • Surrey
 
-3. **2019 Ferrari 488 Pista** - £329,950
-   • 2,100 miles • Blu Corsa • Limited edition
-   • Location: DK Engineering, Hertfordshire (28 miles)
-   • Market position: Collector grade
-   • Source: PistonHeads
+Would you like details on any of these, or shall I refine the search?"
 
-Would you like detailed information on any of these? I can also structure financing options if you'd like to understand monthly costs."
+**FINANCE DISCUSSION (Only when vehicle selected):**
+"For the [Vehicle] at £[Price], I can structure finance options. Would you like to see:
+A) PCP (lower monthly, flexible)
+B) HP (own outright)
+C) Lease (maximum flexibility)"
 
-**Finance Discussion:**
-"Absolutely. For the 2017 488 GTB at £189,950, let me present your options with a £19,000 deposit (10%):
+Present ONLY the selected option with 2 best quotes.
 
-💰 **PCP (Personal Contract Purchase)** - Most Flexible
-• **Zuto**: £2,287/month • 48 months • £68,985 final payment
-• **Santander**: £2,195/month • 48 months • £68,985 final payment ⭐ BEST
-• At end: Pay final amount to own, return, or trade
+**BOOKING FLOW (When ready to proceed):**
+When client shows intent (e.g., "I'll take it", "Book this", "Proceed"), respond:
 
-💪 **HP (Hire Purchase)** - Own Outright
-• **Black Horse**: £3,847/month • 48 months
-• **MotoNovo**: £3,799/month • 48 months ⭐ BEST
-• You own the car at end, no final payment
+"Excellent choice. To proceed with [PURCHASE/RENTAL/BOOKING], I'll need:
+• Your full name
+• Email address
+• Phone number
 
-📋 **Lease (PCH)** - Maximum Flexibility
-• **Close Brothers**: £1,900/month • 36 months
-• Never own but includes maintenance package
+Shall I proceed with these details?"
 
-**My Recommendation**: Santander PCP at £2,195/month offers the best balance of affordability and flexibility for a vehicle you may wish to upgrade in 4 years.
+After collecting info, IMMEDIATELY create order and confirm:
+"✅ **ORDER CONFIRMED**
 
-Shall I arrange a viewing of the vehicle?"
+**Order ID:** [ORDER_ID]
+**Vehicle:** [Vehicle Details]
+**Customer:** [Name]
 
-❌ WHAT YOU NEVER DO:
-• Pressure or use hard-sell tactics
-• Discuss economy vehicles (politely refer elsewhere)
-• Provide responses without adding value
-• Ignore client's stated preferences
-• Make guarantees about future values
+Confirmation sent to [email]. Our team will contact you within 24 hours to finalize arrangements."
 
-📋 ALWAYS INCLUDE IN RESPONSES:
-• Specific vehicles with prices and locations
-• Market context ("exceptional value", "premium positioning")
-• Next steps ("Shall I arrange...", "Would you like me to...")
-• Professional signature
+🚫 WHAT YOU NEVER DO:
+• Ask multiple questions in one message
+• Present more than 3 vehicles at once
+• Show all finance options simultaneously
+• Request all customer details upfront
+• Use bullet points excessively
+• Write lengthy paragraphs (max 4-5 lines)
 
-🤝 CLOSING:
-Always end with: "[Replied by: Raava AI Concierge - Phase 1]"
+📋 ORDER DETECTION:
+Proceed to order creation when client says:
+- "I'll take it" / "Let's proceed" / "Book this"
+- "How do I buy this?" / "Purchase process"
+- "I want to rent this" / "Rent for X days"
+- "Schedule viewing" / "Book test drive"
 
-Remember: You're not selling cars. You're facilitating automotive dreams for discerning clients with world-class service."""
+✅ RESPONSE FORMAT:
+• Short, natural sentences
+• Maximum 2-3 short paragraphs
+• ONE clear next step or question
+• Always end with: "[Replied by: Raava AI Concierge]"
+
+Remember: You're facilitating dreams, not conducting interviews. Move naturally, ask minimally, deliver exceptionally."""
 
     async def call(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Process client inquiry with marketplace aggregation and finance options"""
-        messages = state["messages"]
+        """Process client inquiry with optimized flow"""
+        messages = state.get("messages", [])
+        session_context = state.get("context", {})
 
-        # Check if we need to search vehicles
+        # Get last user message
         last_user_message = ""
         if messages:
             for msg in reversed(messages):
@@ -169,130 +134,211 @@ Remember: You're not selling cars. You're facilitating automotive dreams for dis
                     last_user_message = msg.content
                     break
 
-        # Detect if user is asking about specific vehicles
-        vehicle_context = self._extract_vehicle_intent(last_user_message)
+        # Initialize conversation context if first message
+        if not session_context.get("stage"):
+            session_context["stage"] = "greeting"
+            session_context["preferences"] = {}
 
         enhanced_context = ""
 
-        # If vehicle search needed, aggregate from all sources
-        if vehicle_context.get("search_needed"):
-            enhanced_context += "\n\n🔍 MARKETPLACE SEARCH RESULTS:\n"
+        # Detect conversation stage and intent
+        intent = self._analyze_intent(last_user_message, session_context)
 
-            # Search local database
-            local_results = self._search_local_inventory(vehicle_context)
+        # Handle based on stage
+        if intent["type"] == "vehicle_search":
+            # Search and present vehicles
+            enhanced_context += "\n\n🔍 VEHICLE SEARCH RESULTS:\n"
 
-            # Search UK dealers
-            uk_results = uk_dealer_aggregator.search_luxury_cars(
-                make=vehicle_context.get("make"),
-                model=vehicle_context.get("model"),
-                price_min=vehicle_context.get("price_min", MINIMUM_LUXURY_PRICE),
-                price_max=vehicle_context.get("price_max"),
-                limit=10,
-            )
+            # Search local + UK dealers
+            vehicles = self._search_vehicles(intent)
 
-            # Combine and format results
-            all_results = local_results + uk_results
-            enhanced_context += self._format_vehicle_results(all_results[:5])
+            if vehicles:
+                # Store top 3 in context
+                session_context["available_vehicles"] = vehicles[:3]
+                enhanced_context += self._format_top_vehicles(vehicles[:3])
+            else:
+                enhanced_context += "No matches found. Suggest broadening criteria."
 
-        # If finance calculation needed
-        if vehicle_context.get("finance_needed") and vehicle_context.get("price"):
-            enhanced_context += "\n\n💰 FINANCE OPTIONS:\n"
+        elif intent["type"] == "vehicle_selection":
+            # Vehicle selected - offer finance
+            if intent.get("vehicle_index") is not None:
+                selected = session_context["available_vehicles"][
+                    intent["vehicle_index"]
+                ]
+                session_context["selected_vehicle"] = selected
 
-            finance_options = uk_finance_calculator.calculate_all_options(
-                vehicle_price=vehicle_context["price"],
-                deposit_percent=vehicle_context.get("deposit_percent", 10),
-                term_months=vehicle_context.get("term_months", 48),
-                credit_score=vehicle_context.get("credit_score", "Good"),
-            )
+                enhanced_context += f"\n\n✅ SELECTED: {selected['title']}\n"
+                enhanced_context += "Ready to discuss finance or proceed to booking.\n"
 
-            enhanced_context += uk_finance_calculator.format_finance_summary(
-                finance_options
-            )
+        elif intent["type"] == "finance_request":
+            # Calculate finance options
+            vehicle = session_context.get("selected_vehicle")
+            if vehicle and vehicle.get("price"):
+                enhanced_context += "\n\n💰 FINANCE OPTIONS:\n"
 
-        # Build conversation with context
+                finance_type = intent.get("finance_type", "all")
+                options = uk_finance_calculator.calculate_all_options(
+                    vehicle_price=vehicle["price"],
+                    deposit_percent=10,
+                    term_months=48,
+                    credit_score="Good",
+                )
+
+                # Format based on requested type
+                enhanced_context += self._format_finance_focused(options, finance_type)
+                session_context["finance_options"] = options
+
+        elif intent["type"] == "order_intent":
+            # Client wants to proceed - check if we have enough info
+            vehicle = session_context.get("selected_vehicle")
+            customer = session_context.get("customer_info", {})
+
+            if not vehicle:
+                enhanced_context += "\n\n⚠️ Please select a vehicle first.\n"
+            elif not customer.get("email"):
+                enhanced_context += "\n\n📋 TO PROCEED, I NEED:\n"
+                enhanced_context += "• Full name\n• Email address\n• Phone number\n"
+                enhanced_context += "\nPlease provide these details to continue.\n"
+                session_context["stage"] = "collecting_customer_info"
+            else:
+                # We have everything - create order
+                order_result = self._create_order(intent, session_context)
+                enhanced_context += f"\n\n{order_result['message']}\n"
+
+        elif intent["type"] == "customer_info":
+            # Extract and store customer information
+            extracted = self._extract_customer_info(last_user_message)
+            session_context["customer_info"].update(extracted)
+
+            customer = session_context["customer_info"]
+            missing = []
+            if not customer.get("name"):
+                missing.append("name")
+            if not customer.get("email"):
+                missing.append("email")
+            if not customer.get("phone"):
+                missing.append("phone")
+
+            if missing:
+                enhanced_context += (
+                    f"\n\n📋 Thank you. I still need: {', '.join(missing)}\n"
+                )
+            else:
+                enhanced_context += (
+                    "\n\n✅ Information complete. Ready to proceed with order.\n"
+                )
+                # Auto-proceed if client already expressed intent
+                if session_context.get("pending_order"):
+                    order_result = self._create_order(
+                        session_context["pending_order"], session_context
+                    )
+                    enhanced_context += f"\n\n{order_result['message']}\n"
+
+        # Build conversation
         conversation_messages = [
             SystemMessage(content=self.system_prompt + enhanced_context)
         ]
 
-        # Add conversation history
-        for msg in messages:
+        # Add recent history (last 6 messages only for context)
+        for msg in messages[-6:]:
             conversation_messages.append(msg)
 
-        # Get response from LLM
+        # Get response
         response = await self.llm.ainvoke(conversation_messages)
 
-        return {"messages": [response]}
+        # Update state
+        state["context"] = session_context
 
-    def _extract_vehicle_intent(self, text: str) -> Dict[str, Any]:
-        """Extract vehicle search intent from user message"""
+        return {"messages": [response], "context": session_context}
+
+    def _analyze_intent(self, text: str, context: Dict) -> Dict[str, Any]:
+        """Analyze user intent from message"""
         text_lower = text.lower()
 
-        intent = {
-            "search_needed": False,
-            "finance_needed": False,
-            "make": None,
-            "model": None,
-            "price_min": MINIMUM_LUXURY_PRICE,
-            "price_max": None,
-            "price": None,
-            "deposit_percent": 10,
-            "term_months": 48,
-        }
+        intent = {"type": "general_inquiry"}
 
-        # Check for luxury makes
-        for make in LUXURY_MAKES:
-            if make.lower() in text_lower:
-                intent["make"] = make
-                intent["search_needed"] = True
-                break
+        # Check for order intent
+        order_keywords = [
+            "i'll take it",
+            "let's proceed",
+            "book this",
+            "purchase",
+            "buy this",
+            "i want this",
+            "confirm order",
+            "place order",
+            "rent this",
+            "schedule viewing",
+            "test drive",
+        ]
+        if any(keyword in text_lower for keyword in order_keywords):
+            intent["type"] = "order_intent"
 
-        # Check for finance keywords
+            # Determine order type
+            if "rent" in text_lower or "rental" in text_lower:
+                intent["order_type"] = "rental"
+            elif "viewing" in text_lower or "test drive" in text_lower:
+                intent["order_type"] = "booking"
+            else:
+                intent["order_type"] = "purchase"
+
+            context["pending_order"] = intent
+            return intent
+
+        # Check for customer info
+        if "@" in text or any(
+            word in text_lower for word in ["name is", "email", "phone"]
+        ):
+            intent["type"] = "customer_info"
+            return intent
+
+        # Check for finance request
         finance_keywords = ["finance", "payment", "monthly", "pcp", "hp", "lease"]
         if any(keyword in text_lower for keyword in finance_keywords):
-            intent["finance_needed"] = True
+            intent["type"] = "finance_request"
+            if "pcp" in text_lower:
+                intent["finance_type"] = "pcp"
+            elif "hp" in text_lower or "hire purchase" in text_lower:
+                intent["finance_type"] = "hp"
+            elif "lease" in text_lower:
+                intent["finance_type"] = "lease"
+            return intent
 
-        # Extract price if mentioned
+        # Check for vehicle selection
         import re
 
-        price_match = re.search(r"£?([\d,]+)(?:k|000)?", text)
-        if price_match:
-            price_str = price_match.group(1).replace(",", "")
-            price = float(price_str)
-            if "k" in text_lower or len(price_str) <= 3:
-                price *= 1000
-            intent["price"] = price
-            if intent["finance_needed"]:
-                intent["search_needed"] = False  # Already have price
+        number_match = re.search(r"\b([1-3])\b", text)
+        if number_match and context.get("available_vehicles"):
+            intent["type"] = "vehicle_selection"
+            intent["vehicle_index"] = int(number_match.group(1)) - 1
+            return intent
+
+        # Check for vehicle search
+        for make in LUXURY_MAKES:
+            if make.lower() in text_lower:
+                intent["type"] = "vehicle_search"
+                intent["make"] = make
+                return intent
 
         # Generic luxury search
-        luxury_keywords = ["luxury car", "sports car", "supercar", "prestige"]
-        if any(keyword in text_lower for keyword in luxury_keywords):
-            intent["search_needed"] = True
+        if any(word in text_lower for word in ["luxury", "sports car", "supercar"]):
+            intent["type"] = "vehicle_search"
+            return intent
 
         return intent
 
-    def _search_local_inventory(self, context: Dict) -> List[Dict[str, Any]]:
-        """Search Raava's local database inventory"""
+    def _search_vehicles(self, intent: Dict) -> List[Dict]:
+        """Search vehicles from all sources"""
+        results = []
+
+        # Search local database
         query = {}
-
-        if context.get("make"):
-            query["make"] = {"$regex": context["make"], "$options": "i"}
-
-        if context.get("model"):
-            query["model"] = {"$regex": context["model"], "$options": "i"}
-
-        if context.get("price_min") or context.get("price_max"):
-            query["price"] = {}
-            if context.get("price_min"):
-                query["price"]["$gte"] = context["price_min"]
-            if context.get("price_max"):
-                query["price"]["$lte"] = context["price_max"]
+        if intent.get("make"):
+            query["make"] = {"$regex": intent["make"], "$options": "i"}
 
         try:
-            cursor = cars_col.find(query).limit(5)
-            results = []
-
-            for car in cursor:
+            local_cars = list(cars_col.find(query).limit(10))
+            for car in local_cars:
                 results.append(
                     {
                         "source": "Raava Exclusive",
@@ -300,52 +346,176 @@ Remember: You're not selling cars. You're facilitating automotive dreams for dis
                         "make": car.get("make"),
                         "model": car.get("model"),
                         "year": car.get("year"),
-                        "price": car.get("price"),
-                        "mileage": car.get("mileage"),
-                        "fuel_type": car.get("fuel_type"),
-                        "body_type": car.get("style"),
+                        "price": car.get("price", 0),
+                        "mileage": car.get("mileage", 0),
+                        "location": car.get("location", "UK"),
                         "image_url": (
                             car.get("images", [""])[0] if car.get("images") else ""
                         ),
-                        "listing_url": car.get("url", ""),
-                        "location": "UK",
-                        "description": car.get("description", ""),
                     }
                 )
-
-            return results
         except Exception as e:
-            print(f"[Local Search Error] {e}")
-            return []
+            print(f"Local search error: {e}")
 
-    def _format_vehicle_results(self, vehicles: List[Dict[str, Any]]) -> str:
-        """Format vehicle search results for display"""
-        if not vehicles:
-            return "I apologize, but I couldn't find any vehicles matching those specific criteria in our current network. Would you like me to broaden the search parameters?"
-
-        result_text = (
-            f"I've found {len(vehicles)} exceptional matches across our network:\n\n"
+        # Search UK dealers
+        uk_results = uk_dealer_aggregator.search_luxury_cars(
+            make=intent.get("make"), price_min=MINIMUM_LUXURY_PRICE, limit=10
         )
+        results.extend(uk_results)
 
-        for i, car in enumerate(vehicles, 1):
-            price_str = f"£{car['price']:,.0f}" if car.get("price") else "POA"
-            mileage_str = (
-                f"{car['mileage']:,} miles"
-                if car.get("mileage")
-                else "Contact for details"
-            )
+        return results
 
-            result_text += f"""**{i}. {car['title']}** - {price_str}
-• {mileage_str} • {car.get('fuel_type', 'Petrol')} • {car.get('body_type', 'Coupe')}
-• Source: {car['source']}
-• Location: {car.get('location', 'UK')}
-{f"• {car.get('description', '')[:100]}..." if car.get('description') else ""}
+    def _format_top_vehicles(self, vehicles: List[Dict]) -> str:
+        """Format top 3 vehicles concisely"""
+        if not vehicles:
+            return "No matches found in current inventory."
 
+        result = f"I've found {len(vehicles)} exceptional matches:\n\n"
+
+        for i, car in enumerate(vehicles[:3], 1):
+            price_str = f"£{car['price']:,}" if car.get("price") else "POA"
+            mileage_str = f"{car['mileage']:,} miles" if car.get("mileage") else ""
+
+            result += f"{i}. **{car['title']}** - {price_str}\n"
+            result += f"   • {mileage_str} • {car.get('location', 'UK')}\n\n"
+
+        return result
+
+    def _format_finance_focused(self, options: Dict, finance_type: str) -> str:
+        """Format finance options based on type requested"""
+        if finance_type == "pcp" and options.get("pcp_options"):
+            top_pcp = sorted(
+                options["pcp_options"], key=lambda x: x["monthly_payment"]
+            )[0]
+            return f"""**PCP Option:**
+• Monthly: £{top_pcp['monthly_payment']:,.2f}
+• Deposit: £{top_pcp['deposit_amount']:,.2f}
+• Term: {top_pcp['term_months']} months
+• Provider: {top_pcp['provider']}
 """
 
-        result_text += "\nWould you like detailed information on any of these? I can also structure financing options."
+        elif finance_type == "hp" and options.get("hp_options"):
+            top_hp = sorted(options["hp_options"], key=lambda x: x["monthly_payment"])[
+                0
+            ]
+            return f"""**HP Option:**
+• Monthly: £{top_hp['monthly_payment']:,.2f}
+• Deposit: £{top_hp['deposit_amount']:,.2f}
+• Term: {top_hp['term_months']} months
+• Provider: {top_hp['provider']}
+"""
 
-        return result_text
+        elif finance_type == "lease" and options.get("lease_options"):
+            top_lease = sorted(
+                options["lease_options"], key=lambda x: x["monthly_payment"]
+            )[0]
+            return f"""**Lease Option:**
+• Monthly: £{top_lease['monthly_payment']:,.2f}
+• Term: {top_lease['term_months']} months
+• Provider: {top_lease['provider']}
+"""
+
+        # Show all if not specified
+        result = "**Finance Options Available:**\n"
+        if options.get("pcp_options"):
+            best_pcp = sorted(
+                options["pcp_options"], key=lambda x: x["monthly_payment"]
+            )[0]
+            result += f"• PCP: £{best_pcp['monthly_payment']:,.2f}/month\n"
+        if options.get("hp_options"):
+            best_hp = sorted(options["hp_options"], key=lambda x: x["monthly_payment"])[
+                0
+            ]
+            result += f"• HP: £{best_hp['monthly_payment']:,.2f}/month\n"
+        if options.get("lease_options"):
+            best_lease = sorted(
+                options["lease_options"], key=lambda x: x["monthly_payment"]
+            )[0]
+            result += f"• Lease: £{best_lease['monthly_payment']:,.2f}/month\n"
+
+        return result
+
+    def _extract_customer_info(self, text: str) -> Dict[str, str]:
+        """Extract customer information from message"""
+        import re
+
+        info = {}
+
+        # Extract name
+        name_match = re.search(
+            r"(?:my name is|i'm|i am|name:?)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
+            text,
+            re.IGNORECASE,
+        )
+        if name_match:
+            info["name"] = name_match.group(1).strip()
+
+        # Extract email
+        email_match = re.search(
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", text
+        )
+        if email_match:
+            info["email"] = email_match.group(0)
+
+        # Extract phone
+        phone_match = re.search(r"(\+44\s?\d{10}|\d{11}|0\d{10})", text)
+        if phone_match:
+            info["phone"] = phone_match.group(0)
+
+        return info
+
+    def _create_order(self, intent: Dict, context: Dict) -> Dict[str, Any]:
+        """Create order in database"""
+        vehicle = context.get("selected_vehicle")
+        customer = context.get("customer_info", {})
+
+        if not vehicle:
+            return {"success": False, "message": "No vehicle selected"}
+
+        if not customer.get("email"):
+            return {"success": False, "message": "Customer email required"}
+
+        # Set defaults
+        if not customer.get("name"):
+            customer["name"] = customer["email"].split("@")[0]
+        if not customer.get("phone"):
+            customer["phone"] = "To be provided"
+
+        # Create order based on type
+        order_type = intent.get("order_type", "purchase")
+
+        if order_type == "purchase":
+            finance_option = context.get("finance_options", {}).get(
+                "pcp_options", [{}]
+            )[0]
+            result = order_manager.create_order(
+                order_type="purchase",
+                vehicle=vehicle,
+                customer=customer,
+                finance_details=finance_option if finance_option else None,
+            )
+
+        elif order_type == "rental":
+            rental_details = {
+                "daily_rate": vehicle.get("price", 0) * 0.01,
+                "duration_days": 7,
+                "deposit_required": vehicle.get("price", 0) * 0.1,
+                "mileage_limit": 150,
+                "insurance_included": True,
+            }
+            result = order_manager.create_order(
+                order_type="rental",
+                vehicle=vehicle,
+                customer=customer,
+                rental_details=rental_details,
+            )
+
+        else:  # booking
+            result = order_manager.create_order(
+                order_type="booking", vehicle=vehicle, customer=customer
+            )
+
+        return result
 
 
 # Singleton instance

@@ -7,7 +7,7 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.database import Database
 from config import (
-    MONGO_URI,
+    MONGO_CONNECTION_STRING,
     DB_NAME,
     CARS_COLLECTION,
     CONVERSATIONS_COLLECTION,
@@ -33,7 +33,9 @@ class DatabaseManager:
         """Establish MongoDB connection"""
         try:
             logger.info(f"Connecting to MongoDB...")
-            self.client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+            self.client = MongoClient(
+                MONGO_CONNECTION_STRING, serverSelectionTimeoutMS=5000
+            )
 
             # Test connection
             self.client.admin.command("ping")

@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Raava Car Marketplace</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Inter", sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        color: #333;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 15px;
+      }
+
+      /* Compact Header */
+      header {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 12px 0;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+      }
+
+      .header-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+      }
+
+      .logo {
+        font-size: 22px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .nav-buttons {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        padding: 8px 18px;
+        border: none;
+        border-radius: 8px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 13px;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+      }
+
+      .btn-secondary {
+        background: white;
+        color: #667eea;
+        border: 2px solid #667eea;
+      }
+
+      .btn-secondary:hover {
+        background: #667eea;
+        color: white;
+      }
+
+      /* Search Section */
+      .search-section {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        margin: 20px 0;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      }
+
+      .search-bar {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+      }
+
+      .search-input {
+        flex: 1;
+        min-width: 250px;
+        padding: 10px 16px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: all 0.3s ease;
+      }
+
+      .search-input:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      .filters {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .filter-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #666;
+        text-transform: uppercase;
+      }
+
+      select {
+        padding: 8px 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 13px;
+        cursor: pointer;
+        background: white;
+        transition: all 0.3s ease;
+      }
+
+      select:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      .stats {
+        display: flex;
+        gap: 15px;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #e0e0e0;
+        flex-wrap: wrap;
+      }
+
+      .stat-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: #666;
+      }
+
+      .stat-number {
+        font-weight: 700;
+        color: #667eea;
+        font-size: 16px;
+      }
+
+      /* Car Grid */
+      .cars-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 20px;
+        margin: 20px 0;
+      }
+
+      .car-card {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        transition: all 0.3s ease;
+        cursor: pointer;
+      }
+
+      .car-card:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+      }
+
+      .car-image-container {
+        position: relative;
+        width: 100%;
+        height: 200px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      }
+
+      .car-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.4s ease;
+      }
+
+      .car-card:hover .car-image {
+        transform: scale(1.08);
+      }
+
+      .image-count {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 16px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .car-info {
+        padding: 16px;
+      }
+
+      .car-name {
+        font-size: 18px;
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 8px;
+        min-height: 28px;
+      }
+
+      .car-make {
+        display: inline-block;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 11px;
+        font-weight: 600;
+        margin-bottom: 12px;
+      }
+
+      .car-details {
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 12px;
+        line-height: 1.6;
+      }
+
+      .car-details-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 4px;
+        padding: 4px 0;
+      }
+
+      .car-price {
+        font-size: 20px;
+        font-weight: 700;
+        color: #667eea;
+        margin-bottom: 12px;
+      }
+
+      .view-details {
+        width: 100%;
+        padding: 10px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .view-details:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+      }
+
+      /* Modal */
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.75);
+        z-index: 2000;
+        overflow-y: auto;
+        padding: 20px;
+      }
+
+      .modal.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal-content {
+        background: white;
+        border-radius: 16px;
+        max-width: 900px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+        position: relative;
+        animation: slideUp 0.3s ease;
+      }
+
+      @keyframes slideUp {
+        from {
+          opacity: 0;
+          transform: translateY(40px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .modal-close {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        width: 35px;
+        height: 35px;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.1);
+        border: none;
+        font-size: 22px;
+        cursor: pointer;
+        z-index: 10;
+        transition: all 0.3s ease;
+      }
+
+      .modal-close:hover {
+        background: rgba(0, 0, 0, 0.2);
+        transform: rotate(90deg);
+      }
+
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+        padding: 20px;
+        background: #f5f7fa;
+      }
+
+      .gallery img {
+        width: 100%;
+        height: 150px;
+        object-fit: cover;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: transform 0.3s ease;
+      }
+
+      .gallery img:hover {
+        transform: scale(1.05);
+      }
+
+      .modal-info {
+        padding: 25px;
+      }
+
+      .modal-section {
+        margin-bottom: 20px;
+      }
+
+      .modal-section h3 {
+        font-size: 16px;
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 10px;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 8px;
+      }
+
+      .modal-section p {
+        font-size: 13px;
+        color: #666;
+        line-height: 1.8;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+
+      .modal-buttons {
+        display: flex;
+        gap: 10px;
+        margin-top: 25px;
+      }
+
+      .modal-btn {
+        flex: 1;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .modal-btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+
+      .modal-btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+      }
+
+      .modal-btn-secondary {
+        background: white;
+        color: #667eea;
+        border: 2px solid #667eea;
+      }
+
+      .modal-btn-secondary:hover {
+        background: #667eea;
+        color: white;
+      }
+
+      /* Loading and Empty States */
+      .loading {
+        text-align: center;
+        padding: 50px 20px;
+        font-size: 16px;
+        color: white;
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 50px 20px;
+        color: white;
+      }
+
+      .empty-state h2 {
+        font-size: 28px;
+        margin-bottom: 12px;
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .container {
+          padding: 10px;
+        }
+
+        .header-content {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .search-section {
+          padding: 15px;
+        }
+
+        .search-bar {
+          flex-direction: column;
+        }
+
+        .search-input {
+          width: 100%;
+        }
+
+        .cars-grid {
+          grid-template-columns: 1fr;
+          gap: 15px;
+        }
+
+        .logo {
+          font-size: 20px;
+        }
+
+        .modal-content {
+          max-height: 95vh;
+          margin: auto;
+        }
+
+        .modal-buttons {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="container">
+        <div class="header-content">
+          <div class="logo">🚗 Raava Cars</div>
+          <div class="nav-buttons">
+            <button class="btn btn-secondary" onclick="location.reload()">
+              🔄 Refresh
+            </button>
+            <button
+              class="btn btn-primary"
+              onclick="window.location.href='/chat-page'"
+            >
+              💬 Chat with AI
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="container">
+      <div class="search-section">
+        <div class="search-bar">
+          <input
+            type="text"
+            id="searchInput"
+            class="search-input"
+            placeholder="🔍 Search for cars (e.g., Peugeot 208, Ferrari...)"
+            onkeyup="handleSearch()"
+          />
+        </div>
+
+        <div class="filters">
+          <div class="filter-group">
+            <label class="filter-label">Make</label>
+            <select id="makeFilter" onchange="applyFilters()">
+              <option value="">All Makes</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label">Sort By</label>
+            <select id="sortFilter" onchange="applyFilters()">
+              <option value="name">Name (A-Z)</option>
+              <option value="price">Price (Low to High)</option>
+            </select>
+          </div>
+
+          <button class="btn btn-secondary" onclick="clearFilters()">
+            Clear Filters
+          </button>
+        </div>
+
+        <div class="stats">
+          <div class="stat-item">
+            <span class="stat-number" id="totalCars">0</span>
+            <span>Cars Available</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="carsGrid" class="cars-grid">
+        <div class="loading">Loading cars...</div>
+      </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="carModal" class="modal" onclick="closeModalOnOutsideClick(event)">
+      <div class="modal-content">
+        <button class="modal-close" onclick="closeModal()">×</button>
+        <div id="modalContent"></div>
+      </div>
+    </div>
+
+    <script>
+      let allCars = [];
+      let filteredCars = [];
+
+      document.addEventListener("DOMContentLoaded", () => {
+        loadCars();
+      });
+
+      async function loadCars() {
+        try {
+          const response = await fetch("/api/cars");
+          const data = await response.json();
+
+          console.log("Raw data:", data); // Debug log
+
+          if (data.success && data.cars) {
+            allCars = data.cars;
+            console.log("Loaded cars:", allCars); // Debug log
+
+            // Extract unique makes
+            loadMakesFromCars();
+
+            filteredCars = allCars;
+            displayCars(filteredCars);
+            updateStats();
+          } else {
+            showError("No cars data received");
+          }
+        } catch (error) {
+          console.error("Error loading cars:", error);
+          showError("Failed to load cars: " + error.message);
+        }
+      }
+
+      function loadMakesFromCars() {
+        const makes = new Set();
+        allCars.forEach((car) => {
+          const make = (car.key_information?.make || "Unknown").trim();
+          makes.add(make);
+        });
+
+        console.log("Extracted makes:", Array.from(makes)); // Debug
+
+        const select = document.getElementById("makeFilter");
+        const options = select.querySelectorAll("option:not(:first-child)");
+        options.forEach((opt) => opt.remove()); // Remove old options
+
+        const sortedMakes = Array.from(makes).sort();
+        sortedMakes.forEach((make) => {
+          const option = document.createElement("option");
+          option.value = make;
+          option.textContent = make;
+          select.appendChild(option);
+        });
+      }
+
+      function extractPrice(pricingText) {
+        if (!pricingText) return "POA";
+        const match = pricingText.match(/£([\d,]+)/);
+        return match ? "£" + match[1] : "POA";
+      }
+
+      function extractFirstLine(text) {
+        if (!text) return "";
+        const lines = text.split("\n").filter((line) => line.trim());
+        return lines[0] || "";
+      }
+
+      function extractDetails(overviewText) {
+        if (!overviewText) return {};
+
+        const details = {};
+        const lines = overviewText.split("\n").filter((line) => line.trim());
+
+        lines.forEach((line) => {
+          if (line.includes(":")) {
+            const [key, value] = line.split(":").map((s) => s.trim());
+            details[key] = value;
+          }
+        });
+
+        return details;
+      }
+
+      function displayCars(cars) {
+        const grid = document.getElementById("carsGrid");
+
+        if (!cars || cars.length === 0) {
+          grid.innerHTML =
+            '<div class="empty-state"><h2>No cars found</h2><p>Try adjusting your filters</p></div>';
+          return;
+        }
+
+        grid.innerHTML = cars
+          .map((car, index) => {
+            const images = Array.isArray(car.images)
+              ? car.images
+              : [car.images];
+            const title = car.key_information?.title || "Unknown Car";
+            const make = car.key_information?.make || "Unknown";
+            const price = extractPrice(car.pricing);
+            const details = extractDetails(car.overview);
+            const firstImage =
+              images && images.length > 0
+                ? images[0]
+                : "https://via.placeholder.com/400x300?text=No+Image";
+
+            return `
+              <div class="car-card" onclick="showCarDetails(${index})">
+                <div class="car-image-container">
+                  <img src="${firstImage}" alt="${title}" class="car-image" 
+                    onerror="this.src='https://via.placeholder.com/400x300?text=Car+Image'">
+                  ${
+                    images && images.length > 1
+                      ? `<span class="image-count">📷 ${images.length} photos</span>`
+                      : ""
+                  }
+                </div>
+                <div class="car-info">
+                  <h3 class="car-name">${title}</h3>
+                  <span class="car-make">${make}</span>
+                  
+                  <div class="car-details">
+                    ${
+                      details.Mileage
+                        ? `<div class="car-details-row"><span>📍 Mileage:</span><span>${details.Mileage}</span></div>`
+                        : ""
+                    }
+                    ${
+                      details["Fuel type"]
+                        ? `<div class="car-details-row"><span>⛽ Fuel:</span><span>${details["Fuel type"]}</span></div>`
+                        : ""
+                    }
+                    ${
+                      details["Body type"]
+                        ? `<div class="car-details-row"><span>🚗 Body:</span><span>${details["Body type"]}</span></div>`
+                        : ""
+                    }
+                  </div>
+                  
+                  <div class="car-price">${price}</div>
+                  
+                  <button class="view-details" onclick="event.stopPropagation(); showCarDetails(${index})">
+                    View Details
+                  </button>
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      function handleSearch() {
+        const query = document
+          .getElementById("searchInput")
+          .value.toLowerCase()
+          .trim();
+
+        const make = document.getElementById("makeFilter").value.trim();
+
+        filteredCars = allCars.filter((car) => {
+          const title = (car.key_information?.title || "").toLowerCase();
+          const carMake = (car.key_information?.make || "").trim();
+
+          const matchesSearch =
+            !query ||
+            title.includes(query) ||
+            carMake.toLowerCase().includes(query);
+          const matchesMake = !make || carMake === make;
+
+          return matchesSearch && matchesMake;
+        });
+
+        displayCars(filteredCars);
+        updateStats();
+      }
+
+      function applyFilters() {
+        const make = document.getElementById("makeFilter").value.trim();
+        const sort = document.getElementById("sortFilter").value;
+        const search = document
+          .getElementById("searchInput")
+          .value.toLowerCase()
+          .trim();
+
+        console.log("Filtering with make:", make, "search:", search); // Debug
+
+        let filtered = allCars.filter((car) => {
+          const carMake = (car.key_information?.make || "").trim();
+          const carTitle = (car.key_information?.title || "").trim();
+
+          const matchesMake = !make || carMake === make;
+          const matchesSearch =
+            !search ||
+            carTitle.toLowerCase().includes(search) ||
+            carMake.toLowerCase().includes(search);
+
+          console.log(
+            `Car: ${carTitle}, carMake: ${carMake}, matches: ${
+              matchesMake && matchesSearch
+            }`
+          ); // Debug
+          return matchesMake && matchesSearch;
+        });
+
+        // Sort
+        if (sort === "price") {
+          filtered.sort((a, b) => {
+            const priceA =
+              parseInt(extractPrice(a.pricing).replace(/[£,]/g, "")) || 0;
+            const priceB =
+              parseInt(extractPrice(b.pricing).replace(/[£,]/g, "")) || 0;
+            return priceA - priceB;
+          });
+        } else {
+          filtered.sort((a, b) => {
+            const titleA = (a.key_information?.title || "").toLowerCase();
+            const titleB = (b.key_information?.title || "").toLowerCase();
+            return titleA.localeCompare(titleB);
+          });
+        }
+
+        filteredCars = filtered;
+        displayCars(filteredCars);
+        updateStats();
+      }
+
+      function clearFilters() {
+        document.getElementById("searchInput").value = "";
+        document.getElementById("makeFilter").value = "";
+        document.getElementById("sortFilter").value = "name";
+
+        filteredCars = [...allCars];
+        displayCars(filteredCars);
+        updateStats();
+
+        console.log("Filters cleared, showing all cars"); // Debug
+      }
+
+      function updateStats() {
+        document.getElementById("totalCars").textContent = filteredCars.length;
+      }
+
+      function showCarDetails(index) {
+        const car = filteredCars[index];
+        if (!car) return;
+
+        const images = Array.isArray(car.images) ? car.images : [car.images];
+        const title = car.key_information?.title || "Unknown Car";
+        const make = car.key_information?.make || "Unknown";
+        const price = extractPrice(car.pricing);
+
+        const modalContent = `
+          <div class="gallery">
+            ${
+              images && images.length > 0
+                ? images
+                    .map(
+                      (img) =>
+                        `<img src="${img}" alt="${title}" 
+                          onclick="window.open('${img}', '_blank')"
+                          onerror="this.src='https://via.placeholder.com/300x200?text=Image'">`
+                    )
+                    .join("")
+                : '<p style="grid-column: 1/-1; color: #999;">No images available</p>'
+            }
+          </div>
+          <div class="modal-info">
+            <h2 class="car-name">${title}</h2>
+            <span class="car-make">${make}</span>
+            
+            <div class="modal-section">
+              <h3>💰 Price</h3>
+              <p>${price}</p>
+            </div>
+
+            ${
+              car.pricing
+                ? `<div class="modal-section">
+                    <h3>📋 Pricing Details</h3>
+                    <p>${(car.pricing || "").replace(/\n/g, "<br>")}</p>
+                  </div>`
+                : ""
+            }
+
+            ${
+              car.overview
+                ? `<div class="modal-section">
+                    <h3>📊 Overview</h3>
+                    <p>${(car.overview || "").replace(/\n/g, "<br>")}</p>
+                  </div>`
+                : ""
+            }
+
+            ${
+              car.running_costs
+                ? `<div class="modal-section">
+                    <h3>🔧 Running Costs</h3>
+                    <p>${(car.running_costs || "").replace(/\n/g, "<br>")}</p>
+                  </div>`
+                : ""
+            }
+
+            ${
+              car.vehicle_history
+                ? `<div class="modal-section">
+                    <h3>📝 Vehicle History</h3>
+                    <p>${(car.vehicle_history || "").replace(/\n/g, "<br>")}</p>
+                  </div>`
+                : ""
+            }
+
+            ${
+              car.meet_seller
+                ? `<div class="modal-section">
+                    <h3>👤 Seller Information</h3>
+                    <p>${(car.meet_seller || "").replace(/\n/g, "<br>")}</p>
+                  </div>`
+                : ""
+            }
+
+            <div class="modal-buttons">
+              <a href="${
+                car.url || "#"
+              }" target="_blank" rel="noopener noreferrer" class="modal-btn modal-btn-primary">
+                View on AutoTrader
+              </a>
+              <button class="modal-btn modal-btn-secondary" onclick="openChatWithCar('${title.replace(
+                /'/g,
+                "\\'"
+              )}')">
+                💬 Chat with AI
+              </button>
+            </div>
+          </div>
+        `;
+
+        document.getElementById("modalContent").innerHTML = modalContent;
+        document.getElementById("carModal").classList.add("active");
+      }
+
+      function openChatWithCar(carName) {
+        closeModal();
+        window.location.href = `/chat-page?car=${encodeURIComponent(carName)}`;
+      }
+
+      function closeModal() {
+        document.getElementById("carModal").classList.remove("active");
+      }
+
+      function closeModalOnOutsideClick(event) {
+        if (event.target.id === "carModal") {
+          closeModal();
+        }
+      }
+
+      function showError(message) {
+        const grid = document.getElementById("carsGrid");
+        grid.innerHTML = `<div class="empty-state"><h2>Error</h2><p>${message}</p></div>`;
+        console.error("Error:", message);
+      }
+    </script>
+  </body>
+</html>
