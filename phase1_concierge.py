@@ -1,6 +1,7 @@
 """
 Raava AI Concierge - Phase 1 FIXED
 PROPERLY creates orders and stores in Orders collection
+FIXED: Intent detection to prevent misreading customer info as vehicle selection
 """
 
 import os
@@ -353,27 +354,37 @@ Always end with: [Replied by: Raava AI Concierge]"""
             return {"success": False, "message": f"Error: {str(e)}"}
 
     def _analyze_intent(self, text: str, context: Dict) -> Dict[str, Any]:
-        """Analyze user intent"""
+        """Analyze user intent - FIXED to prioritize customer info detection"""
         text_lower = text.lower()
         stage = context.get("stage", "")
+
+        # 🔥 FIX: Check for customer info FIRST (before vehicle selection)
+        # If message contains email, it's definitely customer info, not a vehicle selection
+        if "@" in text:
+            print("🔍 Detected customer info (email found)")
+            return {"type": "customer_info"}
 
         # Vehicle search
         for make in LUXURY_MAKES:
             if make.lower() in text_lower:
                 return {"type": "vehicle_search", "make": make}
 
-        # Vehicle selection - look for numbers or words like "option", "take", "pick"
-        # Patterns: "1", "option 1", "take 1", "I'll take option 3", "pick 2", "fix option 3"
-        match = re.search(
-            r"(?:option|take|pick|fix|choose|select)?\s*([1-3])", text_lower
-        )
-        if not match:
-            match = re.search(r"\b([1-3])\b", text)
+        # 🔥 FIX: Vehicle selection - ONLY check if we're in vehicle_selection stage
+        # AND we have available vehicles AND the message doesn't look like customer info
+        if stage == "vehicle_selection" and context.get("available_vehicles"):
+            # Look for explicit selection patterns first
+            match = re.search(
+                r"(?:option|take|pick|choose|select|want|fix)\s*([1-3])", text_lower
+            )
+            if not match:
+                # Only match standalone numbers at START of message
+                # This prevents matching "1" inside phone numbers like "+919012345672"
+                match = re.search(r"^([1-3])\b", text.strip())
 
-        if match and context.get("available_vehicles"):
-            vehicle_num = int(match.group(1))
-            print(f"🔍 Detected vehicle selection: {vehicle_num}")
-            return {"type": "vehicle_selection", "vehicle_index": vehicle_num - 1}
+            if match:
+                vehicle_num = int(match.group(1))
+                print(f"🔍 Detected vehicle selection: {vehicle_num}")
+                return {"type": "vehicle_selection", "vehicle_index": vehicle_num - 1}
 
         # Payment method selection
         if stage == "payment_method_selection":
@@ -391,8 +402,9 @@ Always end with: [Replied by: Raava AI Concierge]"""
             elif "lease" in text_lower or "c" in text_lower:
                 return {"type": "finance_type", "type": "lease"}
 
-        # Customer info (has email)
-        if "@" in text:
+        # Customer info (phone number patterns or comma-separated values)
+        if "+" in text or re.search(r"\d{10,}", text) or text.count(",") >= 2:
+            print("🔍 Detected customer info (phone/comma pattern)")
             return {"type": "customer_info"}
 
         return {"type": "general"}
@@ -465,25 +477,32 @@ Always end with: [Replied by: Raava AI Concierge]"""
             info["email"] = email.group(0)
             print(f"   📧 Email: {info['email']}")
 
-        # Phone
-        phone = re.search(r"(\+\d{10,}|\d{10,})", text)
+        # Phone - updated pattern to catch international numbers
+        phone = re.search(r"(\+?\d{10,15})", text)
         if phone:
             info["phone"] = phone.group(0)
             print(f"   📞 Phone: {info['phone']}")
 
         # Name - extract words before email/phone, capitalize first letters
-        parts = text.replace(",", " ").split()
+        # Remove email and phone from text first
+        text_for_name = text
+        if email:
+            text_for_name = text_for_name.replace(email.group(0), "")
+        if phone:
+            text_for_name = text_for_name.replace(phone.group(0), "")
+
+        parts = text_for_name.replace(",", " ").split()
         name_candidates = []
 
         for word in parts:
-            # Skip if it's email or phone
+            # Skip if it's email or phone remnants
             if "@" in word or word.isdigit() or "+" in word:
                 continue
             # Skip common words
-            if word.lower() in ["my", "name", "is", "email", "phone", "and"]:
+            if word.lower() in ["my", "name", "is", "email", "phone", "and", "the"]:
                 continue
             # Add if it looks like a name
-            if len(word) > 1:
+            if len(word) > 1 and word.replace(".", "").isalpha():
                 name_candidates.append(word.strip())
 
         if name_candidates:

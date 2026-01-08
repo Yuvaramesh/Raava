@@ -41,12 +41,12 @@ class DatabaseManager:
             self.client.admin.command("ping")
 
             self.db = self.client[DB_NAME]
-            logger.info(f"✓ Connected to database: {DB_NAME}")
+            logger.info(f"âœ“ Connected to database: {DB_NAME}")
 
         except Exception as e:
-            logger.error(f"❌ Failed to connect to MongoDB: {e}")
+            logger.error(f"âŒ Failed to connect to MongoDB: {e}")
             logger.warning(
-                "⚠️  Running without database connection. Some features may not work."
+                "âš ï¸  Running without database connection. Some features may not work."
             )
             # Create mock objects for development without MongoDB
             self.client = None
@@ -234,11 +234,11 @@ def initialize_database():
         users_col.create_index([("email", 1)], unique=True)
         users_col.create_index([("created_at", -1)])
 
-        logger.info("✓ Database indexes created successfully")
+        logger.info("âœ“ Database indexes created successfully")
         return True
 
     except Exception as e:
-        logger.error(f"❌ Failed to create indexes: {e}")
+        logger.error(f"âŒ Failed to create indexes: {e}")
         return False
 
 
@@ -249,19 +249,19 @@ initialize_database()
 if __name__ == "__main__":
     """Test database connection"""
     print("=" * 60)
-    print("🗄️  Database Connection Test")
+    print("ðŸ—„ï¸  Database Connection Test")
     print("=" * 60)
 
     status = get_database_status()
 
     if status["connected"]:
-        print("✓ Database connected successfully")
+        print("âœ“ Database connected successfully")
         print(f"Database: {status['database']}")
         print("\nCollection counts:")
         for collection, count in status["collections"].items():
-            print(f"  • {collection}: {count} documents")
+            print(f"  â€¢ {collection}: {count} documents")
     else:
-        print("❌ Database connection failed")
+        print("âŒ Database connection failed")
         print(f"Error: {status.get('error', 'Unknown error')}")
 
     print("=" * 60)
