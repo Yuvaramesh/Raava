@@ -230,7 +230,7 @@ class OrderManager:
         """Generate unique order ID"""
         timestamp = datetime.utcnow().strftime("%Y%m%d")
         unique = str(uuid.uuid4())[:8].upper()
-        return f"RV-{timestamp}-{unique}"
+        return f"ORD-RA-{timestamp[:4]}-{unique[:5]}"
 
     def _update_user_orders(self, email: str, order_id: str):
         """Update user document with new order"""

@@ -1,6 +1,6 @@
 """
-Raava AI Concierge - Phase 1 Optimized
-Focused, step-by-step luxury automotive acquisition assistant
+Raava AI Concierge - Phase 1 FIXED
+PROPERLY creates orders and stores in Orders collection
 """
 
 import os
@@ -16,14 +16,15 @@ from config import (
 )
 from uk_car_dealers import uk_dealer_aggregator
 from uk_finance_calculator import uk_finance_calculator
-from database import cars_col
+from database import cars_col, orders_col
 from order_manager import order_manager
+from datetime import datetime
+import re
 
 
 class Phase1Concierge:
     """
-    Raava AI Concierge - Phase 1 Optimized
-    Step-by-step luxury automotive acquisition with minimal questions
+    Raava AI Concierge - FIXED ORDER CREATION
     """
 
     def __init__(self):
@@ -33,96 +34,47 @@ class Phase1Concierge:
             openai_api_key=OPENAI_API_KEY,
         )
 
-        self.system_prompt = """You are the Raava AI Concierge - a distinguished luxury automotive acquisition specialist.
+        self.system_prompt = """You are the Raava AI Concierge - luxury automotive acquisition specialist.
 
-🎯 YOUR CORE MISSION:
-Help clients acquire luxury vehicles through a STREAMLINED, NATURAL conversation. Never overwhelm with questions.
+🎯 MISSION: Help clients acquire vehicles with PROPER ORDER CREATION
 
-🌟 LUXURY FOCUS:
-Ferrari, Lamborghini, Porsche, McLaren, Aston Martin, Bentley, Rolls-Royce, Mercedes-AMG, BMW M, Audi RS
+💬 CONVERSATION FLOW:
 
-💬 COMMUNICATION STYLE:
-• Warm and professional - like a trusted advisor
-• Ask ONE question at a time maximum
-• Keep responses concise (2-4 sentences ideal)
-• Move conversation forward naturally
-• Never list multiple options unless specifically asked
+1. **GREETING**: Ask which luxury marque they're considering
+2. **VEHICLE SEARCH**: Show TOP 3 matches
+3. **VEHICLE SELECTION**: When they pick one, ask payment method
+4. **PAYMENT METHOD**: "Cash or Finance?"
+5. **FINANCE TYPE** (if finance): "PCP, HP, or Lease?"
+6. **CUSTOMER DETAILS**: Get name, email, phone
+7. **CREATE ORDER**: Immediately create and confirm
 
-🎭 CONVERSATION FLOW:
+🔑 CRITICAL ORDER CREATION RULES:
 
-**INITIAL GREETING (First message only):**
-"Good afternoon. I'm your Raava AI Concierge, here to assist with luxury automotive acquisition.
+When you have ALL of these:
+✅ Vehicle selected
+✅ Payment method chosen (cash OR finance type selected)
+✅ Customer details (name, email, phone)
 
-To tailor the experience quickly, may I confirm: which marques are you considering? (e.g., Ferrari, Porsche, Lamborghini, McLaren, Aston Martin)"
+Then you MUST respond with EXACTLY this format:
 
-**AFTER RECEIVING PREFERENCE:**
-Immediately search inventory and present TOP 3 matches only:
+"CREATE_ORDER_NOW
 
-"Excellent choice. I've searched our network and found 3 exceptional matches:
+Vehicle: [vehicle details]
+Payment: [cash/finance type]
+Customer: [name, email, phone]"
 
-1. **2017 Ferrari 488 GTB** - £189,950
-   • 8,400 miles • Rosso Corsa • London (9 miles)
-   
-2. **2019 Porsche 911 Turbo S** - £149,950
-   • 5,200 miles • GT Silver • Manchester
+This triggers the order creation system.
 
-3. **2021 Lamborghini Huracán EVO** - £219,950
-   • 2,800 miles • Grigio Titans • Surrey
+PAYMENT METHOD QUESTIONS:
+- For purchases: "Would you prefer Cash Payment or Finance Options?"
+- For finance: "Which finance type: PCP, HP, or Lease?"
 
-Would you like details on any of these, or shall I refine the search?"
+NEVER skip the payment method selection for purchases!
 
-**FINANCE DISCUSSION (Only when vehicle selected):**
-"For the [Vehicle] at £[Price], I can structure finance options. Would you like to see:
-A) PCP (lower monthly, flexible)
-B) HP (own outright)
-C) Lease (maximum flexibility)"
-
-Present ONLY the selected option with 2 best quotes.
-
-**BOOKING FLOW (When ready to proceed):**
-When client shows intent (e.g., "I'll take it", "Book this", "Proceed"), respond:
-
-"Excellent choice. To proceed with [PURCHASE/RENTAL/BOOKING], I'll need:
-• Your full name
-• Email address
-• Phone number
-
-Shall I proceed with these details?"
-
-After collecting info, IMMEDIATELY create order and confirm:
-"✅ **ORDER CONFIRMED**
-
-**Order ID:** [ORDER_ID]
-**Vehicle:** [Vehicle Details]
-**Customer:** [Name]
-
-Confirmation sent to [email]. Our team will contact you within 24 hours to finalize arrangements."
-
-🚫 WHAT YOU NEVER DO:
-• Ask multiple questions in one message
-• Present more than 3 vehicles at once
-• Show all finance options simultaneously
-• Request all customer details upfront
-• Use bullet points excessively
-• Write lengthy paragraphs (max 4-5 lines)
-
-📋 ORDER DETECTION:
-Proceed to order creation when client says:
-- "I'll take it" / "Let's proceed" / "Book this"
-- "How do I buy this?" / "Purchase process"
-- "I want to rent this" / "Rent for X days"
-- "Schedule viewing" / "Book test drive"
-
-✅ RESPONSE FORMAT:
-• Short, natural sentences
-• Maximum 2-3 short paragraphs
-• ONE clear next step or question
-• Always end with: "[Replied by: Raava AI Concierge]"
-
-Remember: You're facilitating dreams, not conducting interviews. Move naturally, ask minimally, deliver exceptionally."""
+Always end with: [Replied by: Raava AI Concierge]"""
 
     async def call(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Process client inquiry with optimized flow"""
+        """Process with FIXED order creation"""
         messages = state.get("messages", [])
         session_context = state.get("context", {})
 
@@ -134,79 +86,121 @@ Remember: You're facilitating dreams, not conducting interviews. Move naturally,
                     last_user_message = msg.content
                     break
 
-        # Initialize conversation context if first message
+        # Initialize
         if not session_context.get("stage"):
             session_context["stage"] = "greeting"
             session_context["preferences"] = {}
+            session_context["customer_info"] = {}
+
+        print(f"\n🔍 DEBUG - Current Stage: {session_context.get('stage')}")
+        print(f"🔍 DEBUG - User Message: {last_user_message}")
+        print(
+            f"🔍 DEBUG - Has Vehicle: {bool(session_context.get('selected_vehicle'))}"
+        )
+        print(f"🔍 DEBUG - Payment Method: {session_context.get('payment_method')}")
+        print(
+            f"🔍 DEBUG - Customer Email: {session_context.get('customer_info', {}).get('email')}"
+        )
 
         enhanced_context = ""
 
-        # Detect conversation stage and intent
-        intent = self._analyze_intent(last_user_message, session_context)
+        # 🔥 FIRST: Check if we should CREATE ORDER
+        if self._should_create_order(session_context):
+            print("🔥 CREATING ORDER NOW!")
+            order_result = self._create_order_now(session_context)
 
-        # Handle based on stage
-        if intent["type"] == "vehicle_search":
-            # Search and present vehicles
-            enhanced_context += "\n\n🔍 VEHICLE SEARCH RESULTS:\n"
+            if order_result.get("success"):
+                print(f"✅ ORDER CREATED: {order_result.get('order_id')}")
 
-            # Search local + UK dealers
-            vehicles = self._search_vehicles(intent)
-
-            if vehicles:
-                # Store top 3 in context
-                session_context["available_vehicles"] = vehicles[:3]
-                enhanced_context += self._format_top_vehicles(vehicles[:3])
+                # Return order confirmation directly
+                return {
+                    "messages": [AIMessage(content=order_result["message"])],
+                    "context": session_context,
+                }
             else:
-                enhanced_context += "No matches found. Suggest broadening criteria."
+                print(f"❌ ORDER CREATION FAILED: {order_result.get('message')}")
+                enhanced_context += f"\n\n❌ ERROR: {order_result.get('message')}\n"
 
+        # Analyze intent
+        intent = self._analyze_intent(last_user_message, session_context)
+        print(f"🔍 DEBUG - Intent: {intent}")
+
+        # Handle vehicle search
+        if intent["type"] == "vehicle_search":
+            vehicles = self._search_vehicles(intent)
+            if vehicles:
+                session_context["available_vehicles"] = vehicles[:3]
+                enhanced_context += "\n\n🔍 VEHICLE SEARCH RESULTS:\n"
+                enhanced_context += self._format_vehicles(vehicles[:3])
+                session_context["stage"] = "vehicle_selection"  # ✅ Update stage
+
+                print(
+                    f"✅ Found {len(vehicles)} vehicles, stage set to: vehicle_selection"
+                )
+
+        # Handle vehicle selection
         elif intent["type"] == "vehicle_selection":
-            # Vehicle selected - offer finance
-            if intent.get("vehicle_index") is not None:
-                selected = session_context["available_vehicles"][
-                    intent["vehicle_index"]
-                ]
-                session_context["selected_vehicle"] = selected
+            idx = intent.get("vehicle_index")
+            if idx is not None and session_context.get("available_vehicles"):
+                vehicles = session_context["available_vehicles"]
+                if 0 <= idx < len(vehicles):
+                    selected = vehicles[idx]
+                    session_context["selected_vehicle"] = selected
+                    session_context["stage"] = "payment_method_selection"
 
-                enhanced_context += f"\n\n✅ SELECTED: {selected['title']}\n"
-                enhanced_context += "Ready to discuss finance or proceed to booking.\n"
+                    enhanced_context += (
+                        f"\n\n✅ VEHICLE SELECTED: {selected['title']}\n"
+                    )
+                    enhanced_context += f"Price: £{selected.get('price', 0):,}\n"
+                    enhanced_context += (
+                        f"Mileage: {selected.get('mileage', 0):,} miles\n"
+                    )
+                    enhanced_context += (
+                        "ASK: Would you prefer Cash Payment or Finance Options?\n"
+                    )
 
-        elif intent["type"] == "finance_request":
-            # Calculate finance options
+                    print(f"✅ Vehicle saved to context: {selected['title']}")
+                else:
+                    enhanced_context += (
+                        "\n\n❌ Invalid vehicle selection. Please choose 1, 2, or 3.\n"
+                    )
+
+        # Handle payment method selection
+        elif intent["type"] == "payment_method":
+            payment = intent.get("method")
+            session_context["payment_method"] = payment
+
+            if payment == "cash":
+                session_context["stage"] = "collecting_customer_info"
+                enhanced_context += "\n\n✅ CASH PAYMENT SELECTED\n"
+                enhanced_context += "ASK: Name, email, phone?\n"
+            elif payment == "finance":
+                session_context["stage"] = "finance_type_selection"
+                enhanced_context += "\n\n✅ FINANCE SELECTED\n"
+                enhanced_context += "ASK: PCP, HP, or Lease?\n"
+
+        # Handle finance type selection
+        elif intent["type"] == "finance_type":
+            finance_type = intent.get("type")
+            session_context["finance_type"] = finance_type
+            session_context["stage"] = "collecting_customer_info"
+
             vehicle = session_context.get("selected_vehicle")
-            if vehicle and vehicle.get("price"):
-                enhanced_context += "\n\n💰 FINANCE OPTIONS:\n"
-
-                finance_type = intent.get("finance_type", "all")
+            if vehicle:
                 options = uk_finance_calculator.calculate_all_options(
                     vehicle_price=vehicle["price"],
                     deposit_percent=10,
                     term_months=48,
                     credit_score="Good",
                 )
-
-                # Format based on requested type
-                enhanced_context += self._format_finance_focused(options, finance_type)
                 session_context["finance_options"] = options
 
-        elif intent["type"] == "order_intent":
-            # Client wants to proceed - check if we have enough info
-            vehicle = session_context.get("selected_vehicle")
-            customer = session_context.get("customer_info", {})
+                enhanced_context += f"\n\n💰 {finance_type.upper()} CALCULATED\n"
+                enhanced_context += self._format_finance(options, finance_type)
+                enhanced_context += "\n\nASK: Name, email, phone?\n"
 
-            if not vehicle:
-                enhanced_context += "\n\n⚠️ Please select a vehicle first.\n"
-            elif not customer.get("email"):
-                enhanced_context += "\n\n📋 TO PROCEED, I NEED:\n"
-                enhanced_context += "• Full name\n• Email address\n• Phone number\n"
-                enhanced_context += "\nPlease provide these details to continue.\n"
-                session_context["stage"] = "collecting_customer_info"
-            else:
-                # We have everything - create order
-                order_result = self._create_order(intent, session_context)
-                enhanced_context += f"\n\n{order_result['message']}\n"
-
+        # Handle customer info
         elif intent["type"] == "customer_info":
-            # Extract and store customer information
             extracted = self._extract_customer_info(last_user_message)
             session_context["customer_info"].update(extracted)
 
@@ -220,303 +214,287 @@ Remember: You're facilitating dreams, not conducting interviews. Move naturally,
                 missing.append("phone")
 
             if missing:
-                enhanced_context += (
-                    f"\n\n📋 Thank you. I still need: {', '.join(missing)}\n"
-                )
+                enhanced_context += f"\n\n📋 Still need: {', '.join(missing)}\n"
             else:
                 enhanced_context += (
-                    "\n\n✅ Information complete. Ready to proceed with order.\n"
+                    "\n\n✅ ALL INFO COLLECTED - READY TO CREATE ORDER\n"
                 )
-                # Auto-proceed if client already expressed intent
-                if session_context.get("pending_order"):
-                    order_result = self._create_order(
-                        session_context["pending_order"], session_context
-                    )
-                    enhanced_context += f"\n\n{order_result['message']}\n"
+                session_context["stage"] = "ready_to_order"
 
         # Build conversation
         conversation_messages = [
             SystemMessage(content=self.system_prompt + enhanced_context)
         ]
 
-        # Add recent history (last 6 messages only for context)
         for msg in messages[-6:]:
             conversation_messages.append(msg)
 
         # Get response
         response = await self.llm.ainvoke(conversation_messages)
+        response_text = response.content
 
-        # Update state
+        # 🔥 Check if LLM said to create order
+        if "CREATE_ORDER_NOW" in response_text:
+            print("🔥 LLM TRIGGERED ORDER CREATION")
+            order_result = self._create_order_now(session_context)
+
+            if order_result.get("success"):
+                response_text = order_result["message"]
+
+        # ✅ CRITICAL: Update state with modified context
         state["context"] = session_context
 
-        return {"messages": [response], "context": session_context}
-
-    def _analyze_intent(self, text: str, context: Dict) -> Dict[str, Any]:
-        """Analyze user intent from message"""
-        text_lower = text.lower()
-
-        intent = {"type": "general_inquiry"}
-
-        # Check for order intent
-        order_keywords = [
-            "i'll take it",
-            "let's proceed",
-            "book this",
-            "purchase",
-            "buy this",
-            "i want this",
-            "confirm order",
-            "place order",
-            "rent this",
-            "schedule viewing",
-            "test drive",
-        ]
-        if any(keyword in text_lower for keyword in order_keywords):
-            intent["type"] = "order_intent"
-
-            # Determine order type
-            if "rent" in text_lower or "rental" in text_lower:
-                intent["order_type"] = "rental"
-            elif "viewing" in text_lower or "test drive" in text_lower:
-                intent["order_type"] = "booking"
-            else:
-                intent["order_type"] = "purchase"
-
-            context["pending_order"] = intent
-            return intent
-
-        # Check for customer info
-        if "@" in text or any(
-            word in text_lower for word in ["name is", "email", "phone"]
-        ):
-            intent["type"] = "customer_info"
-            return intent
-
-        # Check for finance request
-        finance_keywords = ["finance", "payment", "monthly", "pcp", "hp", "lease"]
-        if any(keyword in text_lower for keyword in finance_keywords):
-            intent["type"] = "finance_request"
-            if "pcp" in text_lower:
-                intent["finance_type"] = "pcp"
-            elif "hp" in text_lower or "hire purchase" in text_lower:
-                intent["finance_type"] = "hp"
-            elif "lease" in text_lower:
-                intent["finance_type"] = "lease"
-            return intent
-
-        # Check for vehicle selection
-        import re
-
-        number_match = re.search(r"\b([1-3])\b", text)
-        if number_match and context.get("available_vehicles"):
-            intent["type"] = "vehicle_selection"
-            intent["vehicle_index"] = int(number_match.group(1)) - 1
-            return intent
-
-        # Check for vehicle search
-        for make in LUXURY_MAKES:
-            if make.lower() in text_lower:
-                intent["type"] = "vehicle_search"
-                intent["make"] = make
-                return intent
-
-        # Generic luxury search
-        if any(word in text_lower for word in ["luxury", "sports car", "supercar"]):
-            intent["type"] = "vehicle_search"
-            return intent
-
-        return intent
-
-    def _search_vehicles(self, intent: Dict) -> List[Dict]:
-        """Search vehicles from all sources"""
-        results = []
-
-        # Search local database
-        query = {}
-        if intent.get("make"):
-            query["make"] = {"$regex": intent["make"], "$options": "i"}
-
-        try:
-            local_cars = list(cars_col.find(query).limit(10))
-            for car in local_cars:
-                results.append(
-                    {
-                        "source": "Raava Exclusive",
-                        "title": f"{car.get('make')} {car.get('model')} ({car.get('year')})",
-                        "make": car.get("make"),
-                        "model": car.get("model"),
-                        "year": car.get("year"),
-                        "price": car.get("price", 0),
-                        "mileage": car.get("mileage", 0),
-                        "location": car.get("location", "UK"),
-                        "image_url": (
-                            car.get("images", [""])[0] if car.get("images") else ""
-                        ),
-                    }
-                )
-        except Exception as e:
-            print(f"Local search error: {e}")
-
-        # Search UK dealers
-        uk_results = uk_dealer_aggregator.search_luxury_cars(
-            make=intent.get("make"), price_min=MINIMUM_LUXURY_PRICE, limit=10
+        print(
+            f"✅ Returning - Stage: {session_context.get('stage')}, Has Vehicle: {bool(session_context.get('selected_vehicle'))}"
         )
-        results.extend(uk_results)
 
-        return results
+        return {
+            "messages": [AIMessage(content=response_text)],
+            "context": session_context,
+        }
 
-    def _format_top_vehicles(self, vehicles: List[Dict]) -> str:
-        """Format top 3 vehicles concisely"""
-        if not vehicles:
-            return "No matches found in current inventory."
-
-        result = f"I've found {len(vehicles)} exceptional matches:\n\n"
-
-        for i, car in enumerate(vehicles[:3], 1):
-            price_str = f"£{car['price']:,}" if car.get("price") else "POA"
-            mileage_str = f"{car['mileage']:,} miles" if car.get("mileage") else ""
-
-            result += f"{i}. **{car['title']}** - {price_str}\n"
-            result += f"   • {mileage_str} • {car.get('location', 'UK')}\n\n"
-
-        return result
-
-    def _format_finance_focused(self, options: Dict, finance_type: str) -> str:
-        """Format finance options based on type requested"""
-        if finance_type == "pcp" and options.get("pcp_options"):
-            top_pcp = sorted(
-                options["pcp_options"], key=lambda x: x["monthly_payment"]
-            )[0]
-            return f"""**PCP Option:**
-• Monthly: £{top_pcp['monthly_payment']:,.2f}
-• Deposit: £{top_pcp['deposit_amount']:,.2f}
-• Term: {top_pcp['term_months']} months
-• Provider: {top_pcp['provider']}
-"""
-
-        elif finance_type == "hp" and options.get("hp_options"):
-            top_hp = sorted(options["hp_options"], key=lambda x: x["monthly_payment"])[
-                0
-            ]
-            return f"""**HP Option:**
-• Monthly: £{top_hp['monthly_payment']:,.2f}
-• Deposit: £{top_hp['deposit_amount']:,.2f}
-• Term: {top_hp['term_months']} months
-• Provider: {top_hp['provider']}
-"""
-
-        elif finance_type == "lease" and options.get("lease_options"):
-            top_lease = sorted(
-                options["lease_options"], key=lambda x: x["monthly_payment"]
-            )[0]
-            return f"""**Lease Option:**
-• Monthly: £{top_lease['monthly_payment']:,.2f}
-• Term: {top_lease['term_months']} months
-• Provider: {top_lease['provider']}
-"""
-
-        # Show all if not specified
-        result = "**Finance Options Available:**\n"
-        if options.get("pcp_options"):
-            best_pcp = sorted(
-                options["pcp_options"], key=lambda x: x["monthly_payment"]
-            )[0]
-            result += f"• PCP: £{best_pcp['monthly_payment']:,.2f}/month\n"
-        if options.get("hp_options"):
-            best_hp = sorted(options["hp_options"], key=lambda x: x["monthly_payment"])[
-                0
-            ]
-            result += f"• HP: £{best_hp['monthly_payment']:,.2f}/month\n"
-        if options.get("lease_options"):
-            best_lease = sorted(
-                options["lease_options"], key=lambda x: x["monthly_payment"]
-            )[0]
-            result += f"• Lease: £{best_lease['monthly_payment']:,.2f}/month\n"
-
-        return result
-
-    def _extract_customer_info(self, text: str) -> Dict[str, str]:
-        """Extract customer information from message"""
-        import re
-
-        info = {}
-
-        # Extract name
-        name_match = re.search(
-            r"(?:my name is|i'm|i am|name:?)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
-            text,
-            re.IGNORECASE,
-        )
-        if name_match:
-            info["name"] = name_match.group(1).strip()
-
-        # Extract email
-        email_match = re.search(
-            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", text
-        )
-        if email_match:
-            info["email"] = email_match.group(0)
-
-        # Extract phone
-        phone_match = re.search(r"(\+44\s?\d{10}|\d{11}|0\d{10})", text)
-        if phone_match:
-            info["phone"] = phone_match.group(0)
-
-        return info
-
-    def _create_order(self, intent: Dict, context: Dict) -> Dict[str, Any]:
-        """Create order in database"""
+    def _should_create_order(self, context: Dict) -> bool:
+        """Check if we have everything needed for order"""
         vehicle = context.get("selected_vehicle")
+        payment = context.get("payment_method")
         customer = context.get("customer_info", {})
 
+        # Must have vehicle
         if not vehicle:
-            return {"success": False, "message": "No vehicle selected"}
+            return False
 
+        # Must have payment method
+        if not payment:
+            return False
+
+        # If finance, must have finance type
+        if payment == "finance" and not context.get("finance_type"):
+            return False
+
+        # Must have customer details
         if not customer.get("email"):
-            return {"success": False, "message": "Customer email required"}
-
-        # Set defaults
+            return False
         if not customer.get("name"):
-            customer["name"] = customer["email"].split("@")[0]
-        if not customer.get("phone"):
-            customer["phone"] = "To be provided"
+            return False
 
-        # Create order based on type
-        order_type = intent.get("order_type", "purchase")
+        # Stage must be ready
+        if context.get("stage") != "ready_to_order":
+            return False
 
-        if order_type == "purchase":
-            finance_option = context.get("finance_options", {}).get(
-                "pcp_options", [{}]
-            )[0]
+        print("✅ ALL REQUIREMENTS MET FOR ORDER CREATION")
+        return True
+
+    def _create_order_now(self, context: Dict) -> Dict[str, Any]:
+        """ACTUALLY CREATE ORDER IN DATABASE"""
+        try:
+            vehicle = context.get("selected_vehicle")
+            customer = context.get("customer_info")
+            payment_method = context.get("payment_method")
+            finance_type = context.get("finance_type")
+
+            print(f"\n🔥 CREATING ORDER:")
+
+            # Validate we have vehicle
+            if not vehicle:
+                print("❌ No vehicle in context!")
+                return {"success": False, "message": "Please select a vehicle first"}
+
+            print(f"   Vehicle: {vehicle.get('title', 'Unknown')}")
+            print(f"   Payment: {payment_method}")
+            print(f"   Customer: {customer.get('email') if customer else 'Missing'}")
+
+            # Prepare finance details if applicable
+            finance_details = None
+            if payment_method == "finance" and finance_type:
+                options = context.get("finance_options", {})
+                key = f"{finance_type}_options"
+                if options.get(key):
+                    finance_details = options[key][0]
+                    print(
+                        f"   Finance: {finance_type.upper()} - £{finance_details.get('monthly_payment', 0)}/mo"
+                    )
+
+            # CREATE ORDER
             result = order_manager.create_order(
                 order_type="purchase",
                 vehicle=vehicle,
                 customer=customer,
-                finance_details=finance_option if finance_option else None,
+                finance_details=finance_details,
             )
 
-        elif order_type == "rental":
-            rental_details = {
-                "daily_rate": vehicle.get("price", 0) * 0.01,
-                "duration_days": 7,
-                "deposit_required": vehicle.get("price", 0) * 0.1,
-                "mileage_limit": 150,
-                "insurance_included": True,
-            }
-            result = order_manager.create_order(
-                order_type="rental",
-                vehicle=vehicle,
-                customer=customer,
-                rental_details=rental_details,
-            )
+            if result.get("success"):
+                order_id = result.get("order_id")
+                print(f"✅ ORDER CREATED IN DATABASE: {order_id}")
 
-        else:  # booking
-            result = order_manager.create_order(
-                order_type="booking", vehicle=vehicle, customer=customer
-            )
+                # Verify it's in database
+                from database import orders_col
 
+                db_order = orders_col.find_one({"order_id": order_id})
+                if db_order:
+                    print(f"✅ VERIFIED IN ORDERS COLLECTION")
+                else:
+                    print(f"❌ NOT FOUND IN DATABASE!")
+
+                # Mark order created in context
+                context["order_created"] = True
+                context["order_id"] = order_id
+                context["stage"] = "order_completed"
+
+                return result
+            else:
+                print(f"❌ ORDER CREATION FAILED: {result.get('message')}")
+                return result
+
+        except Exception as e:
+            print(f"❌ EXCEPTION IN ORDER CREATION: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return {"success": False, "message": f"Error: {str(e)}"}
+
+    def _analyze_intent(self, text: str, context: Dict) -> Dict[str, Any]:
+        """Analyze user intent"""
+        text_lower = text.lower()
+        stage = context.get("stage", "")
+
+        # Vehicle search
+        for make in LUXURY_MAKES:
+            if make.lower() in text_lower:
+                return {"type": "vehicle_search", "make": make}
+
+        # Vehicle selection - look for numbers or words like "option", "take", "pick"
+        # Patterns: "1", "option 1", "take 1", "I'll take option 3", "pick 2", "fix option 3"
+        match = re.search(
+            r"(?:option|take|pick|fix|choose|select)?\s*([1-3])", text_lower
+        )
+        if not match:
+            match = re.search(r"\b([1-3])\b", text)
+
+        if match and context.get("available_vehicles"):
+            vehicle_num = int(match.group(1))
+            print(f"🔍 Detected vehicle selection: {vehicle_num}")
+            return {"type": "vehicle_selection", "vehicle_index": vehicle_num - 1}
+
+        # Payment method selection
+        if stage == "payment_method_selection":
+            if any(w in text_lower for w in ["cash", "full", "upfront", "a"]):
+                return {"type": "payment_method", "method": "cash"}
+            elif any(w in text_lower for w in ["finance", "monthly", "b"]):
+                return {"type": "payment_method", "method": "finance"}
+
+        # Finance type selection
+        if stage == "finance_type_selection":
+            if "pcp" in text_lower or "a" in text_lower:
+                return {"type": "finance_type", "type": "pcp"}
+            elif "hp" in text_lower or "hire" in text_lower or "b" in text_lower:
+                return {"type": "finance_type", "type": "hp"}
+            elif "lease" in text_lower or "c" in text_lower:
+                return {"type": "finance_type", "type": "lease"}
+
+        # Customer info (has email)
+        if "@" in text:
+            return {"type": "customer_info"}
+
+        return {"type": "general"}
+
+    def _search_vehicles(self, intent: Dict) -> List[Dict]:
+        """Search vehicles"""
+        results = []
+        query = {}
+
+        if intent.get("make"):
+            query["make"] = {"$regex": intent["make"], "$options": "i"}
+
+        print(f"🔍 Searching with query: {query}")
+
+        try:
+            local_cars = list(cars_col.find(query).limit(10))
+            print(f"🔍 Found {len(local_cars)} cars in local database")
+
+            for car in local_cars:
+                vehicle = {
+                    "source": "Raava Exclusive",
+                    "title": f"{car.get('make')} {car.get('model')} ({car.get('year')})",
+                    "make": car.get("make"),
+                    "model": car.get("model"),
+                    "year": car.get("year"),
+                    "price": car.get("price", 0),
+                    "mileage": car.get("mileage", 0),
+                    "fuel_type": car.get("fuel_type", "Petrol"),
+                    "body_type": car.get("body_type", car.get("style", "Coupe")),
+                    "location": car.get("location", "UK"),
+                }
+                results.append(vehicle)
+                print(f"   • {vehicle['title']} - £{vehicle['price']:,}")
+
+        except Exception as e:
+            print(f"❌ Search error: {e}")
+            import traceback
+
+            traceback.print_exc()
+
+        if not results:
+            print("⚠️ No vehicles found in database!")
+            print("💡 TIP: Run 'python seed_luxury_cars.py' to add sample vehicles")
+
+        return results
+
+    def _format_vehicles(self, vehicles: List[Dict]) -> str:
+        """Format vehicles"""
+        result = ""
+        for i, car in enumerate(vehicles, 1):
+            result += f"{i}. {car['title']} - £{car['price']:,}\n"
+            result += f"   • {car['mileage']:,} miles • {car['location']}\n\n"
         return result
 
+    def _format_finance(self, options: Dict, finance_type: str) -> str:
+        """Format finance"""
+        key = f"{finance_type}_options"
+        if options.get(key):
+            opt = options[key][0]
+            return f"Monthly: £{opt['monthly_payment']:,.2f} | Provider: {opt['provider']}\n"
+        return ""
 
-# Singleton instance
+    def _extract_customer_info(self, text: str) -> Dict[str, str]:
+        """Extract customer info"""
+        info = {}
+
+        # Email
+        email = re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", text)
+        if email:
+            info["email"] = email.group(0)
+            print(f"   📧 Email: {info['email']}")
+
+        # Phone
+        phone = re.search(r"(\+\d{10,}|\d{10,})", text)
+        if phone:
+            info["phone"] = phone.group(0)
+            print(f"   📞 Phone: {info['phone']}")
+
+        # Name - extract words before email/phone, capitalize first letters
+        parts = text.replace(",", " ").split()
+        name_candidates = []
+
+        for word in parts:
+            # Skip if it's email or phone
+            if "@" in word or word.isdigit() or "+" in word:
+                continue
+            # Skip common words
+            if word.lower() in ["my", "name", "is", "email", "phone", "and"]:
+                continue
+            # Add if it looks like a name
+            if len(word) > 1:
+                name_candidates.append(word.strip())
+
+        if name_candidates:
+            # Take first 2 words as name, capitalize
+            name = " ".join(name_candidates[:2])
+            # Capitalize each word
+            info["name"] = " ".join(word.capitalize() for word in name.split())
+            print(f"   👤 Name: {info['name']}")
+
+        return info
+
+
+# Singleton
 phase1_concierge = Phase1Concierge()
