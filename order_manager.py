@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional
 from bson import ObjectId
 import uuid
 
-from db_schema_manager import orders_col, cars_col, users_col
+from database import orders_col, cars_col, users_col
 from config import LUXURY_MAKES
 
 
