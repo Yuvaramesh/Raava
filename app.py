@@ -1,38 +1,43 @@
-from flask import Flask, render_template, request, jsonify
+"""
+Raava Enhanced App - With Session Management & Email
+Works with existing codebase, adds new features
+"""
+
+from flask import Flask, render_template, request, jsonify, session as flask_session
 from pymongo import MongoClient
 from dotenv import load_dotenv
+from datetime import datetime
 import os
-import google.generativeai as genai
-from PIL import Image
-import requests
-from io import BytesIO
-import base64
-from langgraph.workflow import create_graph
-from langchain_core.messages import HumanMessage, AIMessage
 import asyncio
+from langchain_core.messages import HumanMessage, AIMessage
+import uuid
+
+# Import from existing files
+from config import MONGO_CONNECTION_STRING, DB_NAME
+from db_schema_manager import (
+    db,
+    cars_collection,
+    orders_collection,
+    conversations_collection,
+)
+from supervisor_agent import supervisor_agent
+from phase1_concierge import phase1_concierge
+from order_manager import order_manager
+from uk_finance_calculator import uk_finance_calculator
+
+# Import new enhanced features
+from session_manager import session_manager
+from agent_prompts_manager import agent_prompts_manager
+from db_schema_manager import db_schema_manager
+from enhanced_email_service import enhanced_email_service
 
 load_dotenv()
 app = Flask(__name__)
-
-# MongoDB setup
-client = MongoClient(os.getenv("MONGO_CONNECTION_STRING"))
-db = client["Raava_Sales"]
-collection = db["Cars"]
-
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-2.5-flash-lite")
-
-# ElevenLabs Configuration
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "mCQMfsqGDT6IDkEKR20a")
-
-# Initialize Raava Luxury Automotive Concierge System
-graph = create_graph()
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "your-secret-key-change-in-production")
 
 
 def run_async(coro):
-    """Safely run an async coroutine in a sync environment like Flask."""
+    """Run async function"""
     try:
         loop = asyncio.get_event_loop()
         if loop.is_closed():
@@ -43,51 +48,6 @@ def run_async(coro):
     return loop.run_until_complete(coro)
 
 
-def get_car_context():
-    """Get luxury/performance cars from database for agent context"""
-    doc = collection.find_one({})
-    if not doc or "cars" not in doc:
-        return []
-
-    # Filter for luxury/performance vehicles
-    cars = doc["cars"]
-
-    # Create formatted context for agents
-    car_summaries = []
-    for idx, car in enumerate(cars):
-        key_info = car.get("key_information", {})
-        pricing = car.get("pricing", "")
-
-        # Extract price if available
-        price_str = "Contact for pricing"
-        if "£" in pricing:
-            try:
-                price_str = pricing.split("£")[1].split("\n")[0].strip()
-                price_str = f"£{price_str}"
-            except:
-                pass
-
-        summary = f"""
-Vehicle {idx + 1}: {key_info.get('title', 'Unknown')} ({key_info.get('make', 'Unknown')})
-Price: {price_str}
-Overview: {car.get('overview', 'N/A')[:150]}...
-"""
-        car_summaries.append(summary)
-
-    return "\n".join(car_summaries)
-
-
-def download_image(url):
-    """Download image from URL"""
-    try:
-        response = requests.get(url, timeout=10)
-        img = Image.open(BytesIO(response.content))
-        return img
-    except Exception as e:
-        print(f"Error downloading image: {e}")
-        return None
-
-
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -95,293 +55,246 @@ def home():
 
 @app.route("/chat-page")
 def chat_page():
+    if "session_id" not in flask_session:
+        flask_session["session_id"] = str(uuid.uuid4())
     return render_template("chat.html")
 
 
 @app.route("/api/cars", methods=["GET"])
 def get_cars():
-    """Get all cars with optional filtering"""
+    """Get cars"""
     try:
-        doc = collection.find_one({})
-        if not doc or "cars" not in doc:
-            return jsonify({"success": False, "message": "No cars found"}), 404
+        make = request.args.get("make", "")
+        query = {}
+        if make:
+            query["make"] = {"$regex": make, "$options": "i"}
 
-        cars = doc["cars"]
+        cars = list(cars_collection.find(query).limit(50))
 
-        # Apply filters from query parameters
-        search_query = request.args.get("search", "").lower()
-        make_filter = request.args.get("make", "").lower()
-        sort_by = request.args.get("sort", "name")
-
-        # Filter by search query
-        if search_query:
-            cars = [
-                car
-                for car in cars
-                if search_query
-                in car.get("key_information", {}).get("title", "").lower()
-                or search_query
-                in car.get("key_information", {}).get("make", "").lower()
-            ]
-
-        # Filter by make
-        if make_filter:
-            cars = [
-                car
-                for car in cars
-                if make_filter in car.get("key_information", {}).get("make", "").lower()
-            ]
-
-        # Sort cars
-        if sort_by == "price":
-            cars = sorted(
-                cars,
-                key=lambda x: int(
-                    x.get("pricing", "").split("£")[1].split("\n")[0].replace(",", "")
-                    if "£" in x.get("pricing", "")
-                    else 999999
-                ),
-            )
-        else:  # name
-            cars = sorted(
-                cars,
-                key=lambda x: x.get("key_information", {}).get("title", "").lower(),
+        formatted_cars = []
+        for car in cars:
+            formatted_cars.append(
+                {
+                    "_id": str(car["_id"]),
+                    "make": car.get("make", ""),
+                    "model": car.get("model", ""),
+                    "year": car.get("year", ""),
+                    "price": car.get("price", 0),
+                    "mileage": car.get("mileage", 0),
+                }
             )
 
-        return jsonify({"success": True, "cars": cars, "total": len(cars)})
-
+        return jsonify({"success": True, "cars": formatted_cars})
     except Exception as e:
-        print(f"Error in get_cars: {str(e)}")
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route("/api/makes", methods=["GET"])
-def get_makes():
-    """Get all unique car makes"""
-    try:
-        doc = collection.find_one({})
-        if not doc or "cars" not in doc:
-            return jsonify({"success": False, "message": "No cars found"}), 404
-
-        makes = set()
-        for car in doc["cars"]:
-            make = car.get("key_information", {}).get("make", "Unknown")
-            makes.add(make)
-
-        return jsonify({"success": True, "makes": sorted(list(makes))})
-
-    except Exception as e:
-        print(f"Error in get_makes: {str(e)}")
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route("/api/car/<int:car_id>", methods=["GET"])
-def get_car_details(car_id):
-    """Get details for a specific car by index"""
-    try:
-        doc = collection.find_one({})
-        if not doc or "cars" not in doc:
-            return jsonify({"success": False, "message": "No cars found"}), 404
-
-        cars = doc["cars"]
-        if car_id < 0 or car_id >= len(cars):
-            return jsonify({"success": False, "message": "Car not found"}), 404
-
-        car = cars[car_id]
-        return jsonify({"success": True, "car": car})
-
-    except Exception as e:
-        print(f"Error in get_car_details: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    """
-    Raava Luxury Automotive Concierge Chat Endpoint
-
-    Routes client inquiries through our multi-agent system:
-    - Supervisor: Intelligent routing and general inquiries
-    - Concierge: Vehicle acquisition and financing
-    - Service Manager: Maintenance and service coordination
-    - Consigner: Vehicle listing and valuation
-    """
+    """Enhanced chat with session management"""
     try:
-        user_msg = request.json.get("message", "")
+        data = request.json
+        user_msg = data.get("message", "")
+        session_id = (
+            data.get("session_id")
+            or flask_session.get("session_id")
+            or str(uuid.uuid4())
+        )
 
         if not user_msg.strip():
             return jsonify(
                 {
-                    "reply": "I'm here to assist you. How may I help you today?",
+                    "reply": "Welcome to Raava! How can I assist you today?",
                     "success": True,
+                    "session_id": session_id,
                 }
             )
 
-        # Get current inventory context for agents
-        inventory_context = get_car_context()
+        # Get or create session using new session manager
+        session_state = session_manager.get_session(session_id)
 
-        # Prepare state for Raava multi-agent system
-        initial_state = {"messages": [HumanMessage(content=user_msg)], "next_agent": ""}
+        print(f"\n📍 Session: {session_id}")
+        print(f"📍 Stage: {session_state.stage}")
 
-        async def get_luxury_concierge_reply():
-            """Execute the multi-agent workflow"""
-            try:
-                # Invoke the graph with client inquiry
-                result = await graph.ainvoke(initial_state)
+        # Prepare messages
+        messages = []
+        for turn in session_state.conversation_history[-5:]:
+            messages.append(HumanMessage(content=turn["user_message"]))
+            messages.append(AIMessage(content=turn["ai_response"]))
+        messages.append(HumanMessage(content=user_msg))
 
-                # Extract the final agent's response
-                if result["messages"]:
-                    return result["messages"][-1].content
-                else:
-                    return "I apologize, but I'm having difficulty processing your request. Could you please rephrase your inquiry?"
+        # Prepare state
+        state = {
+            "messages": messages,
+            "context": {
+                "stage": session_state.stage,
+                "routed": session_state.routed,
+                "active_agent": session_state.active_agent,
+                "preferences": session_state.preferences,
+                "customer_info": session_state.customer_info,
+                "payment_method": session_state.payment_method,
+                "finance_type": session_state.finance_type,
+                "selected_vehicle": session_state.selected_vehicle,
+                "available_vehicles": session_state.available_vehicles,
+                "order_created": session_state.order_created,
+                "order_id": session_state.order_id,
+            },
+            "session_id": session_id,
+        }
 
-            except Exception as e:
-                print(f"Graph execution error: {str(e)}")
-                import traceback
+        ai_reply = ""
+        order_created = False
+        order_id = None
 
-                traceback.print_exc()
-                return f"I apologize for the inconvenience. There was a technical issue: {str(e)}"
+        # Route to agent
+        if session_state.routed and session_state.active_agent:
+            if session_state.active_agent == "phase1_concierge":
+                result_state = run_async(phase1_concierge.call(state))
+                ai_reply = result_state["messages"][-1].content
 
-        ai_reply = run_async(get_luxury_concierge_reply())
+                # Update session
+                returned_context = result_state.get("context", {})
+                session_manager.update_session(
+                    session_id,
+                    {
+                        "stage": returned_context.get("stage", session_state.stage),
+                        "payment_method": returned_context.get("payment_method"),
+                        "finance_type": returned_context.get("finance_type"),
+                        "selected_vehicle": returned_context.get("selected_vehicle"),
+                        "available_vehicles": returned_context.get(
+                            "available_vehicles"
+                        ),
+                        "customer_info": returned_context.get("customer_info", {}),
+                        "order_created": returned_context.get("order_created", False),
+                        "order_id": returned_context.get("order_id"),
+                    },
+                )
 
-        return jsonify({"reply": ai_reply, "success": True})
+                # Check for order
+                if returned_context.get("order_created"):
+                    order_id = returned_context.get("order_id")
+                    order_created = True
+
+                    # Send email
+                    db_order = orders_collection.find_one({"order_id": order_id})
+                    if db_order:
+                        enhanced_email_service.send_order_confirmation(db_order)
+
+            else:
+                ai_reply = "Agent in development"
+        else:
+            # Use supervisor
+            result_state = run_async(supervisor_agent.call(state))
+            ai_reply = result_state["messages"][-1].content
+
+            if result_state.get("route_to"):
+                session_manager.update_session(
+                    session_id,
+                    {
+                        "routed": True,
+                        "active_agent": result_state["route_to"],
+                    },
+                )
+
+        # Add conversation turn
+        session_manager.add_conversation_turn(
+            session_id,
+            user_msg,
+            ai_reply,
+            metadata={"order_created": order_created, "order_id": order_id},
+        )
+
+        response_data = {
+            "reply": ai_reply,
+            "success": True,
+            "session_id": session_id,
+            "order_created": order_created,
+        }
+
+        if order_created:
+            response_data["order_id"] = order_id
+            response_data["session_ended"] = True
+            session_manager.end_session(session_id)
+            response_data["reply"] += "\n\n✅ Session Complete!"
+
+        return jsonify(response_data)
 
     except Exception as e:
-        print(f"Chat error: {str(e)}")
+        print(f"❌ Error: {e}")
         import traceback
 
         traceback.print_exc()
-
         return (
             jsonify(
-                {
-                    "reply": "I apologize, but I'm experiencing a temporary technical difficulty. Please try again in a moment.",
-                    "success": False,
-                }
+                {"reply": "Technical difficulty. Please try again.", "success": False}
             ),
             500,
         )
 
 
-@app.route("/chat/image", methods=["POST"])
-def chat_with_image():
-    """Handle image upload and analysis for vehicle identification"""
+@app.route("/api/session/<session_id>", methods=["GET"])
+def get_session_info(session_id):
+    """Get session info"""
+    summary = session_manager.get_session_summary(session_id)
+    if summary:
+        return jsonify({"success": True, "session": summary})
+    return jsonify({"success": False}), 404
+
+
+@app.route("/api/orders", methods=["GET"])
+def get_all_orders():
+    """Get orders"""
     try:
-        if "image" not in request.files:
-            return jsonify({"reply": "No image was uploaded.", "success": False}), 400
-
-        file = request.files["image"]
-        question = request.form.get(
-            "message", "What vehicle is this? Provide expert analysis."
-        )
-
-        # Open and prepare image
-        img = Image.open(file.stream)
-
-        # Get current inventory for context
-        cars = get_car_context()
-
-        prompt = f"""You are a Raava luxury automotive specialist analyzing this vehicle image.
-
-Current Raava Inventory:
-{cars}
-
-Client Question: {question}
-
-Provide an expert analysis including:
-1. Vehicle identification (make, model, approximate year)
-2. Key distinguishing features visible
-3. Whether similar vehicles are available in our inventory
-4. Market positioning and typical values for this type of vehicle
-5. Relevant ownership considerations
-
-Maintain Raava's sophisticated, knowledgeable tone - like an expert at a prestigious automotive establishment."""
-
-        # Call Gemini with image
-        response = model.generate_content([prompt, img])
-
-        return jsonify(
-            {
-                "reply": response.text + "\n\n[Replied by: Raava Image Analysis]",
-                "success": True,
-            }
-        )
-
+        orders = list(orders_collection.find().sort("created_at", -1).limit(50))
+        for order in orders:
+            order["_id"] = str(order["_id"])
+            if isinstance(order.get("created_at"), datetime):
+                order["created_at"] = order["created_at"].isoformat()
+        return jsonify({"success": True, "orders": orders})
     except Exception as e:
-        print(f"Image chat error: {str(e)}")
-        return (
-            jsonify(
-                {
-                    "reply": f"I apologize, but I couldn't analyze the image properly. Error: {str(e)}",
-                    "success": False,
-                }
-            ),
-            500,
-        )
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route("/api/text-to-speech", methods=["POST"])
-def text_to_speech():
-    """Convert text to speech using ElevenLabs API"""
+@app.route("/api/health", methods=["GET"])
+def health_check():
+    """Health check"""
     try:
-        data = request.json
-        text = data.get("text", "")
+        db.command("ping")
+        db_status = "connected"
+        car_count = cars_collection.count_documents({})
+        order_count = orders_collection.count_documents({})
+    except:
+        db_status = "error"
+        car_count = 0
+        order_count = 0
 
-        if not text:
-            return jsonify({"success": False, "message": "No text provided"}), 400
-
-        if not ELEVENLABS_API_KEY:
-            return (
-                jsonify(
-                    {"success": False, "message": "ElevenLabs API key not configured"}
-                ),
-                500,
-            )
-
-        # ElevenLabs TTS API endpoint
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
-
-        headers = {
-            "Accept": "audio/mpeg",
-            "Content-Type": "application/json",
-            "xi-api-key": ELEVENLABS_API_KEY,
+    return jsonify(
+        {
+            "status": "healthy",
+            "service": "Raava Enhanced Platform",
+            "database": {
+                "status": db_status,
+                "cars": car_count,
+                "orders": order_count,
+            },
+            "features": {
+                "session_management": "✅ Active",
+                "email_service": f"✅ Active ({enhanced_email_service.config.email_enabled})",
+                "dynamic_prompts": "✅ Active",
+            },
         }
-
-        payload = {
-            "text": text,
-            "model_id": "eleven_turbo_v2",
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-        }
-
-        response = requests.post(url, json=payload, headers=headers)
-
-        if response.status_code == 200:
-            audio_base64 = base64.b64encode(response.content).decode("utf-8")
-            return jsonify({"success": True, "audio": audio_base64})
-        else:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": f"ElevenLabs API error: {response.status_code}",
-                    }
-                ),
-                500,
-            )
-
-    except Exception as e:
-        print(f"TTS error: {str(e)}")
-        return (
-            jsonify({"success": False, "message": f"Text-to-speech error: {str(e)}"}),
-            500,
-        )
-
-
-@app.route("/api/speech-to-text", methods=["POST"])
-def speech_to_text():
-    """Convert speech to text using browser's built-in Web Speech API"""
-    return jsonify({"success": True, "message": "STT is handled client-side"})
+    )
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    print("\n" + "=" * 70)
+    print("🚗 RAAVA ENHANCED PLATFORM")
+    print("=" * 70)
+    print("✅ Session Management with Memory")
+    print("✅ Enhanced Email Service")
+    print("✅ Dynamic Configuration")
+    print("=" * 70 + "\n")
+
+    session_manager.cleanup_expired_sessions()
+
+    app.run(debug=True, host="0.0.0.0", port=5000)
