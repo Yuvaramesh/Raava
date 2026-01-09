@@ -143,42 +143,69 @@ class ServiceAppointmentManager:
                 f"📅 Date: {appointment['appointment']['date']} at {appointment['appointment']['time']}"
             )
 
-            # 🔥 SAVE TO DATABASE (Services collection)
             col = self._get_collection()
-            if col is not None:
-                result = col.insert_one(appointment)
-                appointment["_id"] = str(result.inserted_id)
-                print(f"\n✅ SAVED TO SERVICES COLLECTION")
-                print(f"   Document ID: {result.inserted_id}")
+            if col is None:
+                print("❌ CRITICAL ERROR: Services collection is not available!")
+                print("   Database connection may be down or collection not accessible")
+                return {
+                    "success": False,
+                    "message": "Database connection error - appointment not saved",
+                }
 
-                # 🔥 VERIFY IT WAS SAVED
-                verify = col.find_one({"appointment_id": appointment_id})
-                if verify:
-                    print(f"✅ VERIFIED: Appointment exists in Services collection")
-                    print(f"   Collection: {col.name}")
-                    print(f"   Document count: {col.count_documents({})}")
-                else:
-                    print(f"❌ ERROR: Appointment not found after insertion!")
-                    return {
-                        "success": False,
-                        "message": "Failed to verify appointment in database",
-                    }
-            else:
-                print("⚠️ Running without database - appointment not persisted")
-                return {"success": False, "message": "Database not available"}
+            print(f"\n📝 Attempting to save to database collection: {col.name}")
 
-            # 🔥 SEND EMAIL CONFIRMATION
-            email_sent = self._send_appointment_email(appointment)
+            result = col.insert_one(appointment)
+            appointment["_id"] = str(result.inserted_id)
 
-            if email_sent:
-                # Update appointment with email status
-                col.update_one(
-                    {"appointment_id": appointment_id},
-                    {"$set": {"email_sent": True, "email_sent_at": datetime.utcnow()}},
+            print(f"✅ INSERTED: Appointment ID {result.inserted_id}")
+
+            verify = col.find_one({"appointment_id": appointment_id})
+            if not verify:
+                print(f"❌ CRITICAL ERROR: Appointment not found after insertion!")
+                print(f"   Searched for: {{'appointment_id': '{appointment_id}'}}")
+                return {
+                    "success": False,
+                    "message": "Failed to verify appointment in database",
+                }
+
+            print(f"✅ VERIFIED: Appointment exists in database")
+            print(f"   Database: {col.database.name}")
+            print(f"   Collection: {col.name}")
+
+            email_sent = False
+            try:
+                print(
+                    f"\n📧 SENDING CONFIRMATION EMAIL to: {appointment['customer']['email']}"
                 )
-                print(f"✅ EMAIL CONFIRMATION SENT")
-            else:
-                print(f"⚠️ Email not sent (check SMTP configuration)")
+
+                from enhanced_email_service import enhanced_email_service
+
+                email_sent = (
+                    enhanced_email_service.send_service_appointment_confirmation(
+                        appointment
+                    )
+                )
+
+                if email_sent:
+                    print(f"✅ EMAIL SENT SUCCESSFULLY")
+                    # Update email status in database
+                    col.update_one(
+                        {"appointment_id": appointment_id},
+                        {
+                            "$set": {
+                                "email_sent": True,
+                                "email_sent_at": datetime.utcnow(),
+                            }
+                        },
+                    )
+                else:
+                    print(f"⚠️ Email service returned False - check SMTP configuration")
+
+            except Exception as e:
+                print(f"❌ ERROR SENDING EMAIL: {e}")
+                import traceback
+
+                traceback.print_exc()
 
             # Generate confirmation message
             message = self._generate_confirmation_message(appointment)

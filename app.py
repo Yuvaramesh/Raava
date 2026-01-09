@@ -131,6 +131,7 @@ def chat():
         state = {
             "messages": messages,
             "context": {
+                "session_id": session_id,  # Add session_id to context
                 "stage": session_state.stage,
                 "routed": session_state.routed,
                 "active_agent": session_state.active_agent,
@@ -208,11 +209,16 @@ def chat():
 
             elif session_state.active_agent == "phase2_service_manager":
                 # Handle vehicle service/maintenance
+                print(f"\n🔧 Routing to Phase 2 Service Manager...")
                 result_state = run_async(phase2_service_manager.call(state))
                 ai_reply = result_state["messages"][-1].content
 
                 # Update session with Phase 2 context
                 returned_context = result_state.get("context", {})
+
+                appointment_created_flag = returned_context.get(
+                    "appointment_created", False
+                )
 
                 # Store Phase 2 specific data in metadata
                 metadata = session_state.metadata.copy()
@@ -226,9 +232,7 @@ def chat():
                         ),
                         "selected_provider": returned_context.get("selected_provider"),
                         "appointment_date": returned_context.get("appointment_date"),
-                        "appointment_created": returned_context.get(
-                            "appointment_created", False
-                        ),
+                        "appointment_created": appointment_created_flag,
                         "appointment_id": returned_context.get("appointment_id"),
                     }
                 )
@@ -243,43 +247,22 @@ def chat():
                     },
                 )
 
-                # 🔥 CHECK FOR APPOINTMENT CREATION
-                if returned_context.get("appointment_created"):
+                if appointment_created_flag:
                     appointment_id = returned_context.get("appointment_id")
                     appointment_created = True
 
                     print(f"\n✅ APPOINTMENT CREATED: {appointment_id}")
-                    print(f"📧 Sending appointment confirmation email...")
 
-                    # Get appointment from database and send email
-                    try:
-                        from service_appointment_manager import (
-                            service_appointment_manager,
+                    # Verify appointment is in Services collection
+                    if db is not None:
+                        services_collection = db["Services"]
+                        db_appointment = services_collection.find_one(
+                            {"appointment_id": appointment_id}
                         )
-
-                        appointment = service_appointment_manager.get_appointment(
-                            appointment_id
-                        )
-
-                        if appointment:
-                            # Send email
-                            email_sent = enhanced_email_service.send_service_appointment_confirmation(
-                                appointment
-                            )
-
-                            if email_sent:
-                                print(
-                                    f"✅ Appointment confirmation email sent to {appointment['customer']['email']}"
-                                )
-                            else:
-                                print(f"⚠️ Email not sent (check SMTP configuration)")
+                        if db_appointment:
+                            print(f"✅ Appointment verified in Services collection")
                         else:
-                            print(f"⚠️ Appointment not found: {appointment_id}")
-                    except Exception as e:
-                        print(f"❌ Error sending appointment email: {e}")
-                        import traceback
-
-                        traceback.print_exc()
+                            print(f"⚠️ Appointment not found in Services collection")
 
             else:
                 ai_reply = "Agent in development"
@@ -310,54 +293,53 @@ def chat():
             },
         )
 
-        # 🔥 BUILD RESPONSE
         response_data = {
             "reply": ai_reply,
             "success": True,
             "session_id": session_id,
             "order_created": order_created,
             "appointment_created": appointment_created,
-            "session_ended": False,  # Default to False
         }
 
-        # 🔥🔥🔥 CRITICAL: Check if we should end the session
-        should_end_session = False
-
-        # Check if order was created
-        if order_created:
-            should_end_session = True
-            response_data["order_id"] = order_id
-            print(f"\n🔥 WILL END SESSION: Order created")
-
-        # Check if appointment was created
         if appointment_created:
-            should_end_session = True
             response_data["appointment_id"] = appointment_id
-            print(f"\n🔥 WILL END SESSION: Appointment created")
-
-        # 🔥 END SESSION IF NEEDED
-        if should_end_session:
             response_data["session_ended"] = True
 
-            print(f"\n🧹 ENDING SESSION: {session_id}")
-            print(f"   Reason: {'Order' if order_created else 'Appointment'} completed")
+            # Add restart message to UI
+            response_data[
+                "reply"
+            ] += "\n\n✅ **Appointment Booked & Confirmed!**\n\n💬 Type 'restart' or refresh to start a new conversation."
 
-            # End the session in database
+            # End session to clear all data
+            print(f"\n🎉 APPOINTMENT BOOKING COMPLETE")
+            print("=" * 70)
+            print(f"📋 Appointment ID: {appointment_id}")
+            print(
+                f"👤 Customer Email: {session_state.metadata.get('customer_service_info', {}).get('email', 'N/A')}"
+            )
+            print(
+                f"🚗 Vehicle: {session_state.metadata.get('vehicle_info', {}).get('make', 'N/A')} {session_state.metadata.get('vehicle_info', {}).get('model', 'N/A')}"
+            )
+            print(f"🧹 Clearing session: {session_id}")
+            print("=" * 70)
+
             session_manager.end_session(session_id)
+            print(f"✅ Session cleared and marked as ended")
+            print(f"✅ Session ID {session_id} ready for fresh conversation\n")
 
-            # Clear flask session
-            flask_session.pop("session_id", None)
+        # Handle order completion - CLEAR SESSION
+        if order_created:
+            response_data["order_id"] = order_id
+            response_data["session_ended"] = True
 
-            print(f"✅ Session ended successfully")
-            print(f"   - Database marked as ended: True")
-            print(f"   - Response includes session_ended: True")
-            print(f"   - Frontend will clear localStorage")
+            # Add restart message
+            response_data[
+                "reply"
+            ] += "\n\n✅ **Order Complete!**\n\n💬 Type 'restart' or refresh to start a new conversation."
 
-        # 🔥 IMPORTANT: Log the response
-        print(f"\n📤 RESPONSE:")
-        print(f"   session_ended: {response_data.get('session_ended')}")
-        print(f"   order_created: {response_data.get('order_created')}")
-        print(f"   appointment_created: {response_data.get('appointment_created')}")
+            # End session after a delay
+            print(f"🎉 Order completed - Clearing session: {session_id}")
+            session_manager.end_session(session_id)
 
         return jsonify(response_data)
 

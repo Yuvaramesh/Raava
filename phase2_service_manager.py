@@ -39,7 +39,7 @@ Flow:
 8. CONFIRM appointment with all details
 
 Once you have ALL information and user confirms, say:
-"CREATE_APPOINTMENT_NOW"
+"APPOINTMENT BOOKED"
 
 Always end: [Replied by: Raava AI Service Manager]"""
 
@@ -66,41 +66,74 @@ Always end: [Replied by: Raava AI Service Manager]"""
         print(f"\n🔧 SERVICE MANAGER - Stage: {session_context.get('service_stage')}")
         print(f"📝 User: {last_user_message[:100]}")
 
+        self._extract_appointment_from_history(messages, session_context)
+
+        if self._is_user_confirming(last_user_message, session_context):
+            print("✅ USER CONFIRMED - Starting full confirmation flow...")
+            print("=" * 70)
+
+            # STEP 1: Validate all data
+            validation = self._validate_appointment_data(session_context)
+            if not validation["valid"]:
+                print(f"❌ VALIDATION FAILED: {validation['errors']}")
+                return {
+                    "messages": [
+                        AIMessage(
+                            content=f"Validation error: {', '.join(validation['errors'])}"
+                        )
+                    ],
+                    "context": session_context,
+                }
+            print("✅ STEP 1: All data validated successfully")
+
+            # STEP 2: Save appointment to database
+            print("\n💾 STEP 2: Saving appointment to database...")
+            appointment_result = self._create_service_appointment(session_context)
+
+            if not appointment_result.get("success"):
+                print(f"❌ DATABASE SAVE FAILED: {appointment_result.get('message')}")
+                return {
+                    "messages": [
+                        AIMessage(
+                            content=f"Error saving appointment: {appointment_result.get('message', 'Unknown error')}"
+                        )
+                    ],
+                    "context": session_context,
+                }
+
+            appointment_id = appointment_result.get("appointment_id")
+            print(f"✅ STEP 2: Appointment saved to database - ID: {appointment_id}")
+
+            # STEP 3: Email sent (already handled in create_appointment)
+            email_status = appointment_result.get("email_sent", False)
+            if email_status:
+                print(
+                    f"✅ STEP 3: Confirmation email sent to {session_context['customer_service_info'].get('email')}"
+                )
+            else:
+                print(
+                    f"⚠️ STEP 3: Email sending reported as false - check SMTP configuration"
+                )
+
+            # STEP 4: Clear session for fresh conversation
+            print(f"\n🧹 STEP 4: Clearing session for fresh conversation...")
+            cleared_context = self._clear_session_context(
+                session_context, appointment_id
+            )
+            print(f"✅ STEP 4: Session cleared - all service data reset")
+            print("=" * 70)
+
+            # FINAL: Update context and return confirmation
+            cleared_context["appointment_created"] = True
+            cleared_context["appointment_id"] = appointment_id
+
+            return {
+                "messages": [AIMessage(content=appointment_result["message"])],
+                "context": cleared_context,
+            }
+
         # Extract information from user message
         self._extract_and_update_context(last_user_message, session_context)
-
-        # 🔥 CHECK: Do we have everything AND user selected date?
-        if self._check_if_date_selected(last_user_message, session_context):
-            print("🔥 DATE SELECTED - Creating appointment now!")
-
-            # Extract selected date
-            date_selection = self._extract_date_selection(
-                last_user_message, session_context
-            )
-            if date_selection:
-                session_context["appointment_date"] = date_selection
-                session_context["service_stage"] = "ready_to_book"
-
-                # CREATE APPOINTMENT IMMEDIATELY
-                appointment_result = self._create_service_appointment(session_context)
-
-                if appointment_result.get("success"):
-                    print(
-                        f"✅ APPOINTMENT CREATED: {appointment_result.get('appointment_id')}"
-                    )
-
-                    # 🔥🔥🔥 CRITICAL FIX: Update context with appointment flags
-                    session_context["appointment_created"] = True
-                    session_context["appointment_id"] = appointment_result.get(
-                        "appointment_id"
-                    )
-                    session_context["service_stage"] = "appointment_completed"
-
-                    # 🔥 Return immediately with updated context
-                    return {
-                        "messages": [AIMessage(content=appointment_result["message"])],
-                        "context": session_context,  # This now has appointment_created = True
-                    }
 
         # Check if we should show providers
         if self._should_show_providers(session_context):
@@ -145,6 +178,46 @@ Always end: [Replied by: Raava AI Service Manager]"""
             "messages": [AIMessage(content=response_text)],
             "context": session_context,
         }
+
+    def _is_user_confirming(self, text: str, context: Dict) -> bool:
+        """Check if user is confirming the appointment"""
+        # Check if user said CONFIRM, yes, or similar
+        text_lower = text.strip().lower()
+
+        # Must have all required information
+        vehicle = context.get("vehicle_info", {})
+        service = context.get("service_request", {})
+        provider = context.get("selected_provider")
+        date_info = context.get("appointment_date")
+        customer = context.get("customer_service_info", {})
+
+        has_all_info = (
+            vehicle.get("make")
+            and service.get("type")
+            and provider
+            and date_info
+            and customer.get("name")
+            and customer.get("email")
+            and customer.get("phone")
+        )
+
+        if not has_all_info:
+            return False
+
+        # Check for confirmation keywords
+        confirm_keywords = [
+            "confirm",
+            "yes",
+            "okay",
+            "ok",
+            "let's",
+            "lets",
+            "book",
+            "proceed",
+            "ready",
+            "go",
+        ]
+        return any(keyword in text_lower for keyword in confirm_keywords)
 
     def _check_if_date_selected(self, text: str, context: Dict) -> bool:
         """Check if user just selected a date"""
@@ -269,7 +342,6 @@ Always end: [Replied by: Raava AI Service Manager]"""
                 if len(mileage_str) <= 6:  # Reasonable mileage
                     context["vehicle_info"]["mileage"] = int(mileage_str)
 
-        # Extract postcode
         if not context["customer_service_info"].get("postcode"):
             postcode_match = re.search(
                 r"\b([A-Z]{1,2}\d{1,2}\s?\d[A-Z]{2})\b", text.upper()
@@ -425,13 +497,21 @@ Always end: [Replied by: Raava AI Service Manager]"""
             parts.append(f"✅ Postcode: {customer['postcode']}")
         if customer.get("name"):
             parts.append(f"✅ Customer: {customer['name']}")
+        if customer.get("phone"):
+            parts.append(f"✅ Phone: {customer['phone']}")
+        if customer.get("email"):
+            parts.append(f"✅ Email: {customer['email']}")
 
         if context.get("selected_provider"):
             provider = context["selected_provider"]
             parts.append(f"✅ Provider: {provider['name']}")
 
-        if context.get("available_slots"):
-            parts.append(f"✅ Showing dates for selection")
+        if context.get("appointment_date"):
+            apt_date = context["appointment_date"]
+            parts.append(f"✅ Date: {apt_date.get('display', '')}")
+
+        if context.get("appointment_created"):
+            parts.append(f"✅ APPOINTMENT BOOKED - Session cleared after booking")
 
         return "\n".join(parts)
 
@@ -451,6 +531,8 @@ Always end: [Replied by: Raava AI Service Manager]"""
             print(f"   Customer: {customer.get('name')} - {customer.get('email')}")
             print(f"   Date: {date_info.get('date')} at {date_info.get('time')}")
             print(f"   Provider: {provider.get('name')}")
+
+            customer["session_id"] = context.get("session_id", "")
 
             result = service_appointment_manager.create_appointment(
                 vehicle=vehicle,
@@ -472,6 +554,193 @@ Always end: [Replied by: Raava AI Service Manager]"""
 
             traceback.print_exc()
             return {"success": False, "message": f"Error: {str(e)}"}
+
+    def _validate_appointment_data(self, context: Dict) -> Dict[str, Any]:
+        """Validate all required appointment data before saving"""
+        errors = []
+
+        vehicle = context.get("vehicle_info", {})
+        if not vehicle.get("make"):
+            errors.append("Vehicle make not specified")
+        if not vehicle.get("model"):
+            errors.append("Vehicle model not specified")
+
+        service = context.get("service_request", {})
+        if not service.get("type"):
+            errors.append("Service type not specified")
+
+        provider = context.get("selected_provider", {})
+        if not provider.get("name"):
+            errors.append("Service provider not selected")
+
+        date_info = context.get("appointment_date", {})
+        if not date_info.get("date"):
+            errors.append("Appointment date not selected")
+        if not date_info.get("time"):
+            errors.append("Appointment time not selected")
+
+        customer = context.get("customer_service_info", {})
+        if not customer.get("name"):
+            errors.append("Customer name not provided")
+        if not customer.get("email"):
+            errors.append("Customer email not provided")
+        if not customer.get("phone"):
+            errors.append("Customer phone not provided")
+
+        return {"valid": len(errors) == 0, "errors": errors}
+
+    def _clear_session_context(
+        self, context: Dict, appointment_id: str
+    ) -> Dict[str, Any]:
+        """Clear all service context to start fresh conversation"""
+        cleared_context = {
+            "session_id": context.get("session_id"),
+            "routed": False,
+            "active_agent": None,
+            "appointment_created": False,
+            "service_stage": "vehicle_identification",
+            "vehicle_info": {},
+            "service_request": {},
+            "selected_provider": None,
+            "appointment_date": {},
+            "customer_service_info": {},
+            "available_providers": None,
+            "available_slots": None,
+            "service_recommendations": {},
+            "last_completed_appointment_id": appointment_id,
+        }
+
+        return cleared_context
+
+    def _extract_appointment_from_history(
+        self, messages: List[Any], context: Dict
+    ) -> None:
+        """Extract appointment details from conversation history (AI responses)"""
+        for msg in reversed(messages):
+            if isinstance(msg, AIMessage):
+                text = msg.content
+
+                vehicle_match = re.search(
+                    r"Vehicle:\s*([A-Za-z\s]+?)\s*$$(\d{4})$$", text
+                )
+                if vehicle_match and not context["vehicle_info"].get("make"):
+                    parts = vehicle_match.group(1).strip().split()
+                    if parts:
+                        context["vehicle_info"]["make"] = parts[0]
+                        if len(parts) > 1:
+                            context["vehicle_info"]["model"] = " ".join(parts[1:])
+                        context["vehicle_info"]["year"] = int(vehicle_match.group(2))
+                        print(
+                            f"✅ Extracted vehicle: {context['vehicle_info']['make']} {context['vehicle_info']['model']} ({context['vehicle_info']['year']})"
+                        )
+
+                mileage_match = re.search(r"Mileage:\s*(\d+(?:,\d+)*)\s*miles", text)
+                if mileage_match and not context["vehicle_info"].get("mileage"):
+                    context["vehicle_info"]["mileage"] = int(
+                        mileage_match.group(1).replace(",", "")
+                    )
+                    print(
+                        f"✅ Extracted mileage: {context['vehicle_info']['mileage']} miles"
+                    )
+
+                service_match = re.search(r"Service:\s*([^\n-]+)", text)
+                if service_match and not context["service_request"].get("type"):
+                    service_raw = service_match.group(1).strip()
+                    context["service_request"]["type"] = service_raw
+                    context["service_request"]["description"] = service_raw
+                    print(f"✅ Extracted service: {service_raw}")
+
+                provider_match = re.search(
+                    r"Provider:\s*([^\n-]+?)(?:\s*—|\s*\(|$)", text
+                )
+                if provider_match and not context.get("selected_provider"):
+                    provider_name = provider_match.group(1).strip()
+                    context["selected_provider"] = {
+                        "name": provider_name,
+                        "location": "Selected",
+                        "tier": 2,
+                    }
+                    print(f"✅ Extracted provider: {provider_name}")
+
+                date_patterns = [
+                    r"Date:\s*([A-Za-z]+\s+[A-Za-z]+\s+\d+,?\s+\d{4})\s*—\s*(\d{1,2}:\d{2})",  # Wed Jan 21, 2026 — 10:30
+                    r"Date:\s*([A-Za-z]+\s+[A-Za-z]+\s+\d+,?\s+\d{4})\s*$$[^)]*$$",  # Wed Jan 21, 2026 (London time)
+                ]
+                for pattern in date_patterns:
+                    date_match = re.search(pattern, text)
+                    if date_match and not context.get("appointment_date"):
+                        date_str = date_match.group(1).strip()
+                        # Extract time if available
+                        time_match = re.search(
+                            r"(\d{1,2}):(\d{2})",
+                            text[date_match.start() : date_match.end() + 20],
+                        )
+                        time_str = (
+                            time_match.group(0).strip() if time_match else "09:00"
+                        )
+
+                        # Convert date to YYYY-MM-DD format
+                        try:
+                            from datetime import datetime
+
+                            dt = datetime.strptime(
+                                date_str.replace(",", ""), "%a %b %d %Y"
+                            )
+                            formatted_date = dt.strftime("%Y-%m-%d")
+                        except:
+                            formatted_date = date_str
+
+                        context["appointment_date"] = {
+                            "date": formatted_date,
+                            "time": time_str,
+                            "display": f"{date_str} at {time_str}",
+                        }
+                        print(f"✅ Extracted date: {formatted_date} at {time_str}")
+                        break
+
+                postcode_match = re.search(
+                    r"Postcode:\s*([A-Z0-9\s]+?)(?:\n|-|$)", text
+                )
+                if postcode_match and not context["customer_service_info"].get(
+                    "postcode"
+                ):
+                    context["customer_service_info"]["postcode"] = postcode_match.group(
+                        1
+                    ).strip()
+                    print(
+                        f"✅ Extracted postcode: {context['customer_service_info']['postcode']}"
+                    )
+
+                customer_match = re.search(
+                    r"Customer:\s*([A-Za-z\s]+?)(?:\s*-|\n|$)", text
+                )
+                if customer_match and not context["customer_service_info"].get("name"):
+                    context["customer_service_info"]["name"] = customer_match.group(
+                        1
+                    ).strip()
+                    print(
+                        f"✅ Extracted customer: {context['customer_service_info']['name']}"
+                    )
+
+                phone_match = re.search(r"Phone:\s*(\+?\d[\d\s\-()]+?)(?:\n|-|$)", text)
+                if phone_match and not context["customer_service_info"].get("phone"):
+                    context["customer_service_info"]["phone"] = phone_match.group(
+                        1
+                    ).strip()
+                    print(
+                        f"✅ Extracted phone: {context['customer_service_info']['phone']}"
+                    )
+
+                email_match = re.search(
+                    r"Email:\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,})", text
+                )
+                if email_match and not context["customer_service_info"].get("email"):
+                    context["customer_service_info"]["email"] = email_match.group(
+                        1
+                    ).strip()
+                    print(
+                        f"✅ Extracted email: {context['customer_service_info']['email']}"
+                    )
 
 
 # Singleton
