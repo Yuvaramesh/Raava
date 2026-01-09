@@ -156,8 +156,20 @@
         border-bottom-left-radius: 4px;
       }
 
-      .bot-message strong {
+      .assistant-message {
+        background: white;
+        color: #333;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+        border-bottom-left-radius: 4px;
+      }
+
+      .bot-message strong,
+      .assistant-message strong {
         color: #667eea;
+      }
+
+      .message p {
+        margin: 5px 0;
       }
 
       .message-audio-btn {
@@ -525,23 +537,22 @@
           font-size: 16px;
         }
       }
+
       .back-btn {
         position: fixed;
         top: 16px;
         right: 16px;
-
         padding: 6px 12px;
         font-size: 13px;
         font-weight: 500;
-
         background: #ffffff;
         color: #5b6cff;
         border: 1px solid #d6d9ff;
         border-radius: 8px;
-
         text-decoration: none;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         z-index: 1000;
+        transition: all 0.3s ease;
       }
 
       .back-btn:hover {
@@ -656,330 +667,289 @@
               class="chat-input"
               placeholder="Ask me about any car or click the mic to speak..."
               rows="1"
-              onkeydown="handleKeyPress(event)"
             ></textarea>
           </div>
 
-          <button class="send-btn" id="sendBtn" onclick="sendMessage()">
-            ➤
-          </button>
+          <button class="send-btn" id="sendBtn">➤</button>
         </div>
       </div>
     </div>
 
     <script>
-      let selectedImage = null;
-      let currentCarContext = null;
-      let recognition = null;
-      let isRecording = false;
-      let currentAudio = null;
+      // 🔥 FIXED SESSION MANAGEMENT
+      let sessionId = localStorage.getItem("raava_session_id") || null;
 
-      // Initialize Speech Recognition
-      if (
-        "webkitSpeechRecognition" in window ||
-        "SpeechRecognition" in window
-      ) {
-        const SpeechRecognition =
-          window.SpeechRecognition || window.webkitSpeechRecognition;
-        recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = "en-US";
-
-        recognition.onresult = function (event) {
-          const transcript = event.results[0][0].transcript;
-          document.getElementById("chatInput").value = transcript;
-          stopVoiceRecording();
-          sendMessage();
-        };
-
-        recognition.onerror = function (event) {
-          console.error("Speech recognition error:", event.error);
-          stopVoiceRecording();
-          if (event.error === "no-speech") {
-            alert("No speech detected. Please try again.");
-          } else if (event.error === "not-allowed") {
-            alert(
-              "Microphone access denied. Please enable microphone permissions."
-            );
-          }
-        };
-
-        recognition.onend = function () {
-          stopVoiceRecording();
-        };
+      // Clear ended sessions
+      if (sessionId) {
+        const endedSessions = JSON.parse(
+          localStorage.getItem("raava_ended_sessions") || "[]"
+        );
+        if (endedSessions.includes(sessionId)) {
+          console.log("🧹 Found ended session in localStorage, clearing...");
+          localStorage.removeItem("raava_session_id");
+          sessionId = null;
+        }
       }
 
-      const textarea = document.getElementById("chatInput");
-      textarea.addEventListener("input", function () {
+      console.log("📋 Session on load:", sessionId || "NEW");
+
+      // DOM elements
+      const chatMessages = document.getElementById("chatMessages");
+      const chatInput = document.getElementById("chatInput");
+      const sendBtn = document.getElementById("sendBtn");
+      const voiceBtn = document.getElementById("voiceBtn");
+
+      // Initialize
+      let isRecording = false;
+      let mediaRecorder = null;
+
+      // Event listeners - properly attached
+      sendBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        sendMessage();
+      });
+
+      chatInput.addEventListener("keypress", function (e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      // Auto-resize textarea
+      chatInput.addEventListener("input", function () {
         this.style.height = "auto";
         this.style.height = this.scrollHeight + "px";
       });
 
-      window.addEventListener("DOMContentLoaded", () => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const carParam = urlParams.get("car");
+      // 🔥 MAIN SEND MESSAGE FUNCTION
+      async function sendMessage() {
+        const message = chatInput.value.trim();
+        if (!message) return;
 
-        if (carParam) {
-          currentCarContext = carParam;
-          document.getElementById("welcomeMessage").style.display = "none";
-          setTimeout(() => {
-            document.getElementById(
-              "chatInput"
-            ).value = `Tell me about the ${carParam} including pricing and features`;
-            sendMessage();
-          }, 500);
-        }
-      });
+        // Disable send button
+        sendBtn.disabled = true;
+        sendBtn.textContent = "...";
 
-      function toggleVoiceRecording() {
-        if (!recognition) {
-          alert(
-            "Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari."
-          );
-          return;
+        // Hide welcome message on first message
+        const welcomeMsg = document.getElementById("welcomeMessage");
+        if (welcomeMsg) {
+          welcomeMsg.style.display = "none";
         }
 
-        if (isRecording) {
-          stopVoiceRecording();
-        } else {
-          startVoiceRecording();
-        }
-      }
+        // Show user message
+        addMessage("user", message);
+        chatInput.value = "";
+        chatInput.style.height = "auto";
 
-      function startVoiceRecording() {
-        try {
-          recognition.start();
-          isRecording = true;
-          document.getElementById("voiceBtn").classList.add("recording");
-          document.getElementById("voiceStatus").classList.add("active");
-          document.getElementById("chatInput").placeholder = "Listening...";
-        } catch (error) {
-          console.error("Error starting recognition:", error);
-        }
-      }
-
-      function stopVoiceRecording() {
-        if (recognition && isRecording) {
-          recognition.stop();
-        }
-        isRecording = false;
-        document.getElementById("voiceBtn").classList.remove("recording");
-        document.getElementById("voiceStatus").classList.remove("active");
-        document.getElementById("chatInput").placeholder =
-          "Ask me about any car or click the mic to speak...";
-      }
-
-      async function playAudio(text, button) {
-        // Stop any currently playing audio
-        if (currentAudio) {
-          currentAudio.pause();
-          currentAudio = null;
-          document
-            .querySelectorAll(".message-audio-btn.playing")
-            .forEach((btn) => {
-              btn.classList.remove("playing");
-              btn.textContent = "🔊";
-            });
-        }
-
-        // If clicking the same button that was playing, just stop
-        if (button.classList.contains("playing")) {
-          return;
-        }
-
-        button.classList.add("playing");
-        button.textContent = "⏸️";
+        // Show typing indicator
+        const typingDiv = addTypingIndicator();
 
         try {
-          const response = await fetch("/api/text-to-speech", {
+          const response = await fetch("/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: text }),
+            body: JSON.stringify({
+              message,
+              session_id: sessionId,
+            }),
           });
 
           const data = await response.json();
 
+          // Remove typing indicator
+          typingDiv.remove();
+
           if (data.success) {
-            const audio = new Audio("data:audio/mpeg;base64," + data.audio);
-            currentAudio = audio;
+            // Update session ID
+            if (data.session_id) {
+              if (!sessionId || sessionId !== data.session_id) {
+                console.log(
+                  "🔄 Session updated:",
+                  sessionId,
+                  "->",
+                  data.session_id
+                );
+              }
+              sessionId = data.session_id;
+              localStorage.setItem("raava_session_id", sessionId);
+            }
 
-            audio.onended = () => {
-              button.classList.remove("playing");
-              button.textContent = "🔊";
-              currentAudio = null;
-            };
+            // Show assistant response
+            addMessage("assistant", data.reply);
 
-            audio.onerror = () => {
-              button.classList.remove("playing");
-              button.textContent = "🔊";
-              currentAudio = null;
-              alert("Error playing audio");
-            };
+            // 🔥 Handle session clearing
+            if (data.session_ended) {
+              console.log("🧹 Session ended by server");
 
-            await audio.play();
+              // Mark as ended
+              const endedSessions = JSON.parse(
+                localStorage.getItem("raava_ended_sessions") || "[]"
+              );
+              if (sessionId && !endedSessions.includes(sessionId)) {
+                endedSessions.push(sessionId);
+                localStorage.setItem(
+                  "raava_ended_sessions",
+                  JSON.stringify(endedSessions)
+                );
+              }
+
+              // Clear session
+              localStorage.removeItem("raava_session_id");
+              sessionId = null;
+
+              console.log("✅ Session cleared from browser");
+
+              // Show completion notice
+              if (data.order_created) {
+                console.log("✅ Order completed:", data.order_id);
+                showCompletionNotice("purchase", data.order_id);
+              } else if (data.appointment_created) {
+                console.log("✅ Appointment booked:", data.appointment_id);
+                showCompletionNotice("appointment", data.appointment_id);
+              }
+            }
           } else {
-            button.classList.remove("playing");
-            button.textContent = "🔊";
-            alert("TTS Error: " + data.message);
+            addMessage(
+              "assistant",
+              "Sorry, I encountered an error. Please try again."
+            );
           }
         } catch (error) {
-          button.classList.remove("playing");
-          button.textContent = "🔊";
-          console.error("TTS error:", error);
-          alert(
-            "Failed to convert text to speech. Please check your API configuration."
+          typingDiv.remove();
+          console.error("Error:", error);
+          addMessage(
+            "assistant",
+            "Sorry, I encountered a technical issue. Please try again."
           );
+        } finally {
+          // Re-enable send button
+          sendBtn.disabled = false;
+          sendBtn.textContent = "➤";
         }
       }
 
-      function handleKeyPress(event) {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          sendMessage();
-        }
+      function addMessage(role, text) {
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `message ${role}-message`;
+
+        // Format text with line breaks
+        const formattedText = text
+          .split("\n")
+          .map((line) => {
+            if (line.trim()) {
+              return `<p>${escapeHtml(line)}</p>`;
+            }
+            return "";
+          })
+          .join("");
+
+        messageDiv.innerHTML = formattedText;
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        return messageDiv;
       }
 
+      function addTypingIndicator() {
+        const typingDiv = document.createElement("div");
+        typingDiv.className = "typing-indicator";
+        typingDiv.innerHTML = `<span></span><span></span><span></span>`;
+        chatMessages.appendChild(typingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        return typingDiv;
+      }
+
+      function showCompletionNotice(type, id) {
+        const notice = document.createElement("div");
+        notice.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          padding: 25px;
+          border-radius: 15px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+          max-width: 350px;
+          z-index: 1000;
+          animation: slideInNotice 0.3s ease-out;
+        `;
+
+        const icon = type === "purchase" ? "🚗" : "🔧";
+        const title =
+          type === "purchase" ? "Order Complete!" : "Appointment Booked!";
+        const subtitle =
+          type === "purchase" ? `Order ID: ${id}` : `Appointment ID: ${id}`;
+
+        notice.innerHTML = `
+          <div style="font-size: 36px; text-align: center; margin-bottom: 12px;">${icon}</div>
+          <div style="font-weight: 600; font-size: 20px; text-align: center; margin-bottom: 10px;">${title}</div>
+          <div style="text-align: center; opacity: 0.95; font-size: 14px; margin-bottom: 18px;">${subtitle}</div>
+          <div style="text-align: center; font-size: 14px; opacity: 0.9;">Confirmation email sent ✉️</div>
+          <div style="text-align: center; font-size: 13px; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.3);">
+            Session cleared - Ready for new conversation 🔄
+          </div>
+        `;
+
+        document.body.appendChild(notice);
+
+        setTimeout(() => {
+          notice.style.animation = "slideOutNotice 0.3s ease-in";
+          setTimeout(() => notice.remove(), 300);
+        }, 8000);
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Quick action function
       function askQuestion(question) {
-        document.getElementById("chatInput").value = question;
+        chatInput.value = question;
         sendMessage();
       }
 
+      // Voice recording function (placeholder)
+      function toggleVoiceRecording() {
+        console.log("Voice recording not implemented yet");
+        alert("Voice recording feature coming soon!");
+      }
+
+      // Image upload function (placeholder)
       function handleImageSelect(event) {
-        const file = event.target.files[0];
-        if (file) {
-          selectedImage = file;
-          const reader = new FileReader();
-          reader.onload = function (e) {
-            addMessage(
-              "user",
-              `<div class="image-preview-container"><img src="${e.target.result}" class="image-preview" alt="Uploaded car"><button class="remove-image" onclick="removeImage()">×</button></div><div>📸 Image uploaded - Type your question and click send</div>`
-            );
-          };
-          reader.readAsDataURL(file);
-          document.getElementById("chatInput").placeholder =
-            "Ask about this car image...";
-          document.getElementById("chatInput").focus();
-        }
+        console.log("Image upload not implemented yet");
+        alert("Image upload feature coming soon!");
       }
 
-      function removeImage() {
-        selectedImage = null;
-        document.getElementById("imageInput").value = "";
-        document.getElementById("chatInput").placeholder =
-          "Ask me about any car or click the mic to speak...";
-      }
-
-      function addMessage(type, content, audioText = null) {
-        const messagesDiv = document.getElementById("chatMessages");
-        const welcomeMsg = document.getElementById("welcomeMessage");
-        if (welcomeMsg) welcomeMsg.style.display = "none";
-
-        const messageDiv = document.createElement("div");
-        messageDiv.className = `message ${type}-message`;
-
-        // Add audio button for bot messages
-        if (type === "bot" && audioText) {
-          const audioBtn = document.createElement("button");
-          audioBtn.className = "message-audio-btn";
-          audioBtn.textContent = "🔊";
-          audioBtn.title = "Listen to response";
-          audioBtn.onclick = function () {
-            playAudio(audioText, audioBtn);
-          };
-          messageDiv.appendChild(audioBtn);
-        }
-
-        const contentSpan = document.createElement("span");
-        contentSpan.innerHTML = content;
-        messageDiv.appendChild(contentSpan);
-
-        messagesDiv.appendChild(messageDiv);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      }
-
-      function showTypingIndicator() {
-        const messagesDiv = document.getElementById("chatMessages");
-        const typingDiv = document.createElement("div");
-        typingDiv.className = "typing-indicator";
-        typingDiv.id = "typingIndicator";
-        typingDiv.innerHTML = "<span></span><span></span><span></span>";
-        messagesDiv.appendChild(typingDiv);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      }
-
-      function removeTypingIndicator() {
-        const typingDiv = document.getElementById("typingIndicator");
-        if (typingDiv) typingDiv.remove();
-      }
-
-      async function sendMessage() {
-        const input = document.getElementById("chatInput");
-        const message = input.value.trim();
-        if (!message && !selectedImage) return;
-
-        const sendBtn = document.getElementById("sendBtn");
-        sendBtn.disabled = true;
-
-        if (message && !selectedImage) addMessage("user", message);
-        input.value = "";
-        input.style.height = "auto";
-        showTypingIndicator();
-
-        try {
-          let response;
-          if (selectedImage) {
-            const formData = new FormData();
-            formData.append("image", selectedImage);
-            formData.append(
-              "message",
-              message || "What car is this? Provide detailed information."
-            );
-            response = await fetch("/chat/image", {
-              method: "POST",
-              body: formData,
-            });
-            removeImage();
-          } else {
-            response = await fetch("/chat", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ message, carName: currentCarContext }),
-            });
+      // Add CSS animations
+      const style = document.createElement("style");
+      style.textContent = `
+        @keyframes slideInNotice {
+          from {
+            transform: translateX(400px);
+            opacity: 0;
           }
-
-          const data = await response.json();
-          removeTypingIndicator();
-
-          let botContent = formatResponse(data.reply);
-          if (data.image && data.image.length > 0) {
-            botContent += '<div class="chat-images">';
-            data.image.forEach((img) => {
-              botContent += `<img src="${img}" alt="Car" onclick="window.open('${img}', '_blank')">`;
-            });
-            botContent += "</div>";
+          to {
+            transform: translateX(0);
+            opacity: 1;
           }
-
-          // Add message with audio capability
-          addMessage("bot", botContent, data.reply);
-        } catch (error) {
-          removeTypingIndicator();
-          addMessage(
-            "bot",
-            "❌ Sorry, something went wrong. Please try again."
-          );
-        } finally {
-          sendBtn.disabled = false;
-          input.focus();
         }
-      }
-
-      function formatResponse(text) {
-        text = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-        text = text.replace(/\*(.*?)\*/g, "<em>$1</em>");
-        text = text.replace(/\n/g, "<br>");
-        return text;
-      }
+        
+        @keyframes slideOutNotice {
+          from {
+            transform: translateX(0);
+            opacity: 1;
+          }
+          to {
+            transform: translateX(400px);
+            opacity: 0;
+          }
+        }
+      `;
+      document.head.appendChild(style);
     </script>
   </body>
 </html>

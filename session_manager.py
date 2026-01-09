@@ -1,5 +1,5 @@
 """
-Raava Session Manager - Fixed lazy loading
+Raava Session Manager - Fixed lazy loading and database compatibility
 """
 
 from typing import Dict, Any, Optional, List
@@ -58,12 +58,41 @@ class SessionState:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SessionState":
-        """Create from dictionary"""
-        if isinstance(data.get("created_at"), str):
-            data["created_at"] = datetime.fromisoformat(data["created_at"])
-        if isinstance(data.get("last_active"), str):
-            data["last_active"] = datetime.fromisoformat(data["last_active"])
-        return cls(**data)
+        """Create from dictionary - with backward compatibility"""
+        # Remove fields that aren't in SessionState
+        allowed_fields = {
+            "session_id",
+            "user_id",
+            "created_at",
+            "last_active",
+            "stage",
+            "routed",
+            "active_agent",
+            "preferences",
+            "customer_info",
+            "payment_method",
+            "finance_type",
+            "selected_vehicle",
+            "available_vehicles",
+            "finance_options",
+            "order_created",
+            "order_id",
+            "conversation_history",
+            "metadata",
+        }
+
+        # Filter out unknown fields
+        clean_data = {k: v for k, v in data.items() if k in allowed_fields}
+
+        # Convert datetime strings
+        if isinstance(clean_data.get("created_at"), str):
+            clean_data["created_at"] = datetime.fromisoformat(clean_data["created_at"])
+        if isinstance(clean_data.get("last_active"), str):
+            clean_data["last_active"] = datetime.fromisoformat(
+                clean_data["last_active"]
+            )
+
+        return cls(**clean_data)
 
 
 class SessionManager:
@@ -101,6 +130,7 @@ class SessionManager:
 
     def get_session(self, session_id: str) -> Optional[SessionState]:
         """Get session from memory or database"""
+        # Check memory first
         if session_id in self.active_sessions:
             session = self.active_sessions[session_id]
             if self._is_session_expired(session):
@@ -109,6 +139,7 @@ class SessionManager:
             session.last_active = datetime.utcnow()
             return session
 
+        # Try loading from database
         session = self._load_session_from_db(session_id)
         if session:
             if self._is_session_expired(session):
@@ -117,6 +148,7 @@ class SessionManager:
             session.last_active = datetime.utcnow()
             return session
 
+        # Create new session
         return self.create_session(session_id=session_id)
 
     def update_session(self, session_id: str, updates: Dict[str, Any]) -> bool:
@@ -222,9 +254,13 @@ class SessionManager:
             doc["_id"] = session.session_id
             doc["ended"] = False
             col.update_one({"_id": session.session_id}, {"$set": doc}, upsert=True)
+            print(f"✅ Session saved to database: {session.session_id}")
             return True
         except Exception as e:
             print(f"❌ Error saving session: {e}")
+            import traceback
+
+            traceback.print_exc()
             return False
 
     def _load_session_from_db(self, session_id: str) -> Optional[SessionState]:
@@ -233,13 +269,17 @@ class SessionManager:
             col = self._get_db_collection()
             if col is None:
                 return None
-            doc = col.find_one({"_id": session_id})
+            doc = col.find_one({"_id": session_id, "ended": {"$ne": True}})
             if doc:
                 doc.pop("_id", None)
                 doc.pop("ended", None)
+                print(f"✅ Session loaded from database: {session_id}")
                 return SessionState.from_dict(doc)
         except Exception as e:
             print(f"❌ Error loading session: {e}")
+            import traceback
+
+            traceback.print_exc()
         return None
 
     def _save_conversation_turn_to_db(self, session_id: str, turn: Dict) -> bool:
