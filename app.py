@@ -1,6 +1,8 @@
 """
-Raava Enhanced App - With Phase 2 Service Manager
-Complete integration of all phases
+Raava Enhanced App - ALL 3 PHASES COMPLETE
+Phase 1: Vehicle Acquisition
+Phase 2: Service Management
+Phase 3: Vehicle Consignment
 """
 
 from flask import Flask, render_template, request, jsonify, session as flask_session
@@ -21,10 +23,11 @@ from db_schema_manager import (
     conversations_collection,
 )
 
-# Import agents
+# Import agents - ALL 3 PHASES
 from supervisor_agent import supervisor_agent
 from phase1_concierge import phase1_concierge
 from phase2_service_manager import phase2_service_manager
+from phase3_consigner import phase3_consigner
 
 # Import managers
 from order_manager import order_manager
@@ -63,9 +66,15 @@ def chat_page():
     return render_template("chat.html")
 
 
+@app.route("/listings")
+def listings_page():
+    """View all consignment listings"""
+    return render_template("listings.html")
+
+
 @app.route("/api/cars", methods=["GET"])
 def get_cars():
-    """Get cars"""
+    """Get cars from Cars collection"""
     try:
         make = request.args.get("make", "")
         query = {}
@@ -92,10 +101,61 @@ def get_cars():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/api/consignments", methods=["GET"])
+def get_consignments():
+    """Get all consignment listings from Consignments collection"""
+    try:
+        if db is None:
+            return jsonify({"success": True, "listings": []})
+
+        consignments_col = db["Consignments"]
+
+        # Get query parameters
+        status = request.args.get("status", "")
+        make = request.args.get("make", "")
+
+        query = {}
+        if status:
+            query["status"] = status
+        if make:
+            query["vehicle.make"] = {"$regex": make, "$options": "i"}
+
+        listings = list(consignments_col.find(query).sort("created_at", -1).limit(100))
+
+        # Format listings
+        formatted_listings = []
+        for listing in listings:
+            formatted_listings.append(
+                {
+                    "_id": str(listing["_id"]),
+                    "listing_id": listing.get("listing_id"),
+                    "status": listing.get("status"),
+                    "vehicle": listing.get("vehicle", {}),
+                    "pricing": listing.get("pricing", {}),
+                    "specifications": listing.get("specifications", {}),
+                    "condition": listing.get("condition", {}),
+                    "listing": listing.get("listing", {}),
+                    "marketplaces": listing.get("marketplaces", []),
+                    "owner": listing.get("owner", {}),
+                    "created_at": (
+                        listing.get("created_at").isoformat()
+                        if isinstance(listing.get("created_at"), datetime)
+                        else None
+                    ),
+                    "views": listing.get("views", 0),
+                    "inquiries": listing.get("inquiries", 0),
+                }
+            )
+
+        return jsonify({"success": True, "listings": formatted_listings})
+    except Exception as e:
+        print(f"❌ Error fetching consignments: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
-    print("Api chat")
-    """Enhanced chat with PROPER session clearing after appointments/orders"""
+    """Enhanced chat with ALL 3 PHASES"""
     try:
         data = request.json
         user_msg = data.get("message", "")
@@ -128,11 +188,11 @@ def chat():
             messages.append(AIMessage(content=turn["ai_response"]))
         messages.append(HumanMessage(content=user_msg))
 
-        # Prepare state
+        # Prepare state with all phase contexts
         state = {
             "messages": messages,
             "context": {
-                "session_id": session_id,  # Add session_id to context
+                "session_id": session_id,
                 "stage": session_state.stage,
                 "routed": session_state.routed,
                 "active_agent": session_state.active_agent,
@@ -144,7 +204,7 @@ def chat():
                 "available_vehicles": session_state.available_vehicles,
                 "order_created": session_state.order_created,
                 "order_id": session_state.order_id,
-                # Phase 2 specific context
+                # Phase 2 context
                 "service_stage": session_state.metadata.get("service_stage"),
                 "vehicle_info": session_state.metadata.get("vehicle_info", {}),
                 "service_request": session_state.metadata.get("service_request", {}),
@@ -157,6 +217,19 @@ def chat():
                     "appointment_created", False
                 ),
                 "appointment_id": session_state.metadata.get("appointment_id"),
+                # Phase 3 context
+                "consigner_stage": session_state.metadata.get("consigner_stage"),
+                "vehicle_details": session_state.metadata.get("vehicle_details", {}),
+                "service_history": session_state.metadata.get("service_history", {}),
+                "specifications": session_state.metadata.get("specifications", {}),
+                "condition": session_state.metadata.get("condition", {}),
+                "photos_ready": session_state.metadata.get("photos_ready", False),
+                "valuation": session_state.metadata.get("valuation", {}),
+                "asking_price": session_state.metadata.get("asking_price", 0),
+                "marketplaces": session_state.metadata.get("marketplaces", []),
+                "owner_details": session_state.metadata.get("owner_details", {}),
+                "listing_created": session_state.metadata.get("listing_created", False),
+                "listing_id": session_state.metadata.get("listing_id"),
             },
             "session_id": session_id,
         }
@@ -166,6 +239,8 @@ def chat():
         order_id = None
         appointment_created = False
         appointment_id = None
+        listing_created = False
+        listing_id = None
 
         # Route to appropriate agent
         if session_state.routed and session_state.active_agent:
@@ -196,32 +271,19 @@ def chat():
                 if returned_context.get("order_created"):
                     order_id = returned_context.get("order_id")
                     order_created = True
-
-                    print(f"\n✅ ORDER CREATED: {order_id}")
-                    print(f"📧 Sending order confirmation email...")
-
-                    # Send email
-                    from database import orders_col
-
-                    db_order = orders_col.find_one({"order_id": order_id})
-                    if db_order:
-                        enhanced_email_service.send_order_confirmation(db_order)
-                        print(f"✅ Order confirmation email sent")
+                    print(f"✅ ORDER CREATED: {order_id}")
 
             elif session_state.active_agent == "phase2_service_manager":
                 # Handle vehicle service/maintenance
-                print(f"\n🔧 Routing to Phase 2 Service Manager...")
                 result_state = run_async(phase2_service_manager.call(state))
                 ai_reply = result_state["messages"][-1].content
 
                 # Update session with Phase 2 context
                 returned_context = result_state.get("context", {})
-
                 appointment_created_flag = returned_context.get(
                     "appointment_created", False
                 )
 
-                # Store Phase 2 specific data in metadata
                 metadata = session_state.metadata.copy()
                 metadata.update(
                     {
@@ -251,19 +313,49 @@ def chat():
                 if appointment_created_flag:
                     appointment_id = returned_context.get("appointment_id")
                     appointment_created = True
+                    print(f"✅ APPOINTMENT CREATED: {appointment_id}")
 
-                    print(f"\n✅ APPOINTMENT CREATED: {appointment_id}")
+            elif session_state.active_agent == "phase3_consigner":
+                # Handle vehicle consignment
+                result_state = run_async(phase3_consigner.call(state))
+                ai_reply = result_state["messages"][-1].content
 
-                    # Verify appointment is in Services collection
-                    if db is not None:
-                        services_collection = db["Services"]
-                        db_appointment = services_collection.find_one(
-                            {"appointment_id": appointment_id}
-                        )
-                        if db_appointment:
-                            print(f"✅ Appointment verified in Services collection")
-                        else:
-                            print(f"⚠️ Appointment not found in Services collection")
+                # Update session with Phase 3 context
+                returned_context = result_state.get("context", {})
+                listing_created_flag = returned_context.get("listing_created", False)
+
+                metadata = session_state.metadata.copy()
+                metadata.update(
+                    {
+                        "consigner_stage": returned_context.get("consigner_stage"),
+                        "vehicle_details": returned_context.get("vehicle_details", {}),
+                        "service_history": returned_context.get("service_history", {}),
+                        "specifications": returned_context.get("specifications", {}),
+                        "condition": returned_context.get("condition", {}),
+                        "photos_ready": returned_context.get("photos_ready", False),
+                        "valuation": returned_context.get("valuation", {}),
+                        "asking_price": returned_context.get("asking_price", 0),
+                        "marketplaces": returned_context.get("marketplaces", []),
+                        "owner_details": returned_context.get("owner_details", {}),
+                        "listing_created": listing_created_flag,
+                        "listing_id": returned_context.get("listing_id"),
+                    }
+                )
+
+                session_manager.update_session(
+                    session_id,
+                    {
+                        "stage": returned_context.get(
+                            "consigner_stage", session_state.stage
+                        ),
+                        "metadata": metadata,
+                    },
+                )
+
+                if listing_created_flag:
+                    listing_id = returned_context.get("listing_id")
+                    listing_created = True
+                    print(f"✅ LISTING CREATED: {listing_id}")
 
             else:
                 ai_reply = "Agent in development"
@@ -291,6 +383,8 @@ def chat():
                 "order_id": order_id,
                 "appointment_created": appointment_created,
                 "appointment_id": appointment_id,
+                "listing_created": listing_created,
+                "listing_id": listing_id,
             },
         )
 
@@ -300,46 +394,25 @@ def chat():
             "session_id": session_id,
             "order_created": order_created,
             "appointment_created": appointment_created,
+            "listing_created": listing_created,
         }
 
-        if appointment_created:
-            response_data["appointment_id"] = appointment_id
+        # Handle completion and session clearing
+        if appointment_created or order_created or listing_created:
             response_data["session_ended"] = True
 
-            # Add restart message to UI
+            completion_type = (
+                "Order"
+                if order_created
+                else ("Appointment" if appointment_created else "Listing")
+            )
+            completion_id = order_id or appointment_id or listing_id
+
             response_data[
                 "reply"
-            ] += "\n\n✅ **Appointment Booked & Confirmed!**\n\n💬 Type 'restart' or refresh to start a new conversation."
+            ] += f"\n\n✅ **{completion_type} Complete!**\n\n💬 Type 'restart' or refresh to start a new conversation."
 
-            # End session to clear all data
-            print(f"\n🎉 APPOINTMENT BOOKING COMPLETE")
-            print("=" * 70)
-            print(f"📋 Appointment ID: {appointment_id}")
-            print(
-                f"👤 Customer Email: {session_state.metadata.get('customer_service_info', {}).get('email', 'N/A')}"
-            )
-            print(
-                f"🚗 Vehicle: {session_state.metadata.get('vehicle_info', {}).get('make', 'N/A')} {session_state.metadata.get('vehicle_info', {}).get('model', 'N/A')}"
-            )
-            print(f"🧹 Clearing session: {session_id}")
-            print("=" * 70)
-
-            session_manager.end_session(session_id)
-            print(f"✅ Session cleared and marked as ended")
-            print(f"✅ Session ID {session_id} ready for fresh conversation\n")
-
-        # Handle order completion - CLEAR SESSION
-        if order_created:
-            response_data["order_id"] = order_id
-            response_data["session_ended"] = True
-
-            # Add restart message
-            response_data[
-                "reply"
-            ] += "\n\n✅ **Order Complete!**\n\n💬 Type 'restart' or refresh to start a new conversation."
-
-            # End session after a delay
-            print(f"🎉 Order completed - Clearing session: {session_id}")
+            print(f"🎉 {completion_type.upper()} COMPLETE: {completion_id}")
             session_manager.end_session(session_id)
 
         return jsonify(response_data)
@@ -386,19 +459,12 @@ def get_all_orders():
 def get_all_appointments():
     """Get service appointments"""
     try:
-        from service_booking_manager import service_appointment_manager
-
-        # Get from database
         if db is not None:
-            appointments = list(
-                db["service_appointments"].find().sort("created_at", -1).limit(50)
-            )
+            appointments = list(db["Services"].find().sort("created_at", -1).limit(50))
             for apt in appointments:
                 apt["_id"] = str(apt["_id"])
                 if isinstance(apt.get("created_at"), datetime):
                     apt["created_at"] = apt["created_at"].isoformat()
-                if isinstance(apt.get("updated_at"), datetime):
-                    apt["updated_at"] = apt["updated_at"].isoformat()
             return jsonify({"success": True, "appointments": appointments})
         else:
             return jsonify({"success": True, "appointments": []})
@@ -415,37 +481,32 @@ def health_check():
             db_status = "connected"
             car_count = cars_collection.count_documents({})
             order_count = orders_collection.count_documents({})
-            appointment_count = (
-                db["service_appointments"].count_documents({}) if db is not None else 0
-            )
+            appointment_count = db["Services"].count_documents({})
+            listing_count = db["Consignments"].count_documents({})
         else:
             db_status = "disconnected"
-            car_count = 0
-            order_count = 0
-            appointment_count = 0
+            car_count = order_count = appointment_count = listing_count = 0
     except:
         db_status = "error"
-        car_count = 0
-        order_count = 0
-        appointment_count = 0
+        car_count = order_count = appointment_count = listing_count = 0
 
     return jsonify(
         {
             "status": "healthy",
-            "service": "Raava Enhanced Platform",
+            "service": "Raava Complete Platform",
             "database": {
                 "status": db_status,
                 "cars": car_count,
                 "orders": order_count,
                 "appointments": appointment_count,
+                "listings": listing_count,
             },
             "features": {
-                "session_management": "âœ… Active",
-                "email_service": f"âœ… Active ({enhanced_email_service.config.email_enabled})",
-                "dynamic_prompts": "âœ… Active",
-                "phase1_concierge": "âœ… Active (Vehicle Acquisition)",
-                "phase2_service_manager": "âœ… Active (Maintenance & Service)",
-                "phase3_consigner": "â¸ï¸ Coming Soon (Vehicle Selling)",
+                "session_management": "✅ Active",
+                "email_service": f"✅ Active",
+                "phase1_concierge": "✅ Active (Vehicle Acquisition)",
+                "phase2_service_manager": "✅ Active (Maintenance & Service)",
+                "phase3_consigner": "✅ Active (Vehicle Consignment)",
             },
         }
     )
@@ -453,17 +514,12 @@ def health_check():
 
 if __name__ == "__main__":
     print("\n" + "=" * 70)
-    print("ðŸš— RAAVA ENHANCED PLATFORM")
+    print("🚗 RAAVA COMPLETE PLATFORM - ALL 3 PHASES")
     print("=" * 70)
-    print("âœ… Phase 1: AI Concierge (Vehicle Acquisition)")
-    print("âœ… Phase 2: AI Service Manager (Maintenance & Service)")
-    print("â¸ï¸  Phase 3: AI Consigner (Vehicle Selling) - Coming Soon")
-    print("=" * 70)
-    print("âœ… Session Management with Memory")
-    print("âœ… Enhanced Email Service")
-    print("âœ… Dynamic Configuration")
+    print("✅ Phase 1: AI Concierge (Vehicle Acquisition)")
+    print("✅ Phase 2: AI Service Manager (Maintenance & Service)")
+    print("✅ Phase 3: AI Consigner (Vehicle Consignment)")
     print("=" * 70 + "\n")
 
     session_manager.cleanup_expired_sessions()
-
     app.run(debug=True, host="0.0.0.0", port=5000)
