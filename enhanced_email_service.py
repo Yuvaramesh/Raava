@@ -108,6 +108,288 @@ class EnhancedEmailService:
             traceback.print_exc()
             return False
 
+    # Add this method to the EnhancedEmailService class in enhanced_email_service.py
+
+    def send_service_appointment_confirmation(
+        self, appointment: Dict[str, Any]
+    ) -> bool:
+        """Send service appointment confirmation email"""
+        try:
+            customer_email = appointment.get("customer", {}).get("email")
+            if not customer_email:
+                print("⚠️ No customer email provided")
+                return False
+
+            vehicle = appointment.get("vehicle", {})
+            service = appointment.get("service", {})
+            customer = appointment.get("customer", {})
+            provider = appointment.get("provider", {})
+            apt = appointment.get("appointment", {})
+
+            subject = f"✅ Service Appointment Confirmed - {appointment.get('appointment_id')}"
+
+            # Build email body
+            html_body = self._build_service_appointment_html(
+                appointment, vehicle, service, customer, provider, apt
+            )
+
+            # Send email
+            result = self._send_email(customer_email, subject, html_body)
+
+            if result:
+                print(f"✅ Service confirmation sent to {customer_email}")
+            else:
+                print(f"⚠️ Failed to send email to {customer_email}")
+
+            return result
+
+        except Exception as e:
+            print(f"❌ Email error: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return False
+
+    def _build_service_appointment_html(
+        self,
+        appointment: Dict[str, Any],
+        vehicle: Dict[str, Any],
+        service: Dict[str, Any],
+        customer: Dict[str, Any],
+        provider: Dict[str, Any],
+        apt: Dict[str, Any],
+    ) -> str:
+        """Build service appointment HTML email"""
+
+        html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 20px 0;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">
+                    
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #1a1a1a 0%, #333 100%); color: white; padding: 40px 30px; text-align: center;">
+                            <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: 2px;">{self.config.company_name}</h1>
+                            <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9; letter-spacing: 1px;">SERVICE BOOKING PLATFORM</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Success Badge -->
+                    <tr>
+                        <td style="padding: 30px; text-align: center;">
+                            <div style="display: inline-block; background: #28a745; color: white; padding: 12px 30px; border-radius: 25px; font-size: 18px; font-weight: 600;">
+                                ✅ Service Appointment Confirmed
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Appointment ID Box -->
+                    <tr>
+                        <td style="padding: 0 30px 20px 30px;">
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #28a745;">
+                                <table width="100%">
+                                    <tr>
+                                        <td style="padding: 5px 0;"><strong>Appointment ID:</strong></td>
+                                        <td style="padding: 5px 0; text-align: right; font-family: monospace; color: #007bff;">{appointment.get('appointment_id')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 5px 0;"><strong>Booked:</strong></td>
+                                        <td style="padding: 5px 0; text-align: right;">{appointment.get('created_at', datetime.utcnow()).strftime('%d %B %Y, %H:%M')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 5px 0;"><strong>Status:</strong></td>
+                                        <td style="padding: 5px 0; text-align: right;"><span style="background: #ffc107; color: #000; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;">PENDING</span></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Appointment Date/Time - PROMINENT -->
+                    <tr>
+                        <td style="padding: 0 30px 20px 30px;">
+                            <div style="background: #007bff; color: white; padding: 25px; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">APPOINTMENT DATE & TIME</div>
+                                <div style="font-size: 24px; font-weight: 700;">{apt.get('formatted', 'TBD')}</div>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Vehicle Details -->
+                    <tr>
+                        <td style="padding: 0 30px 20px 30px;">
+                            <h3 style="margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">🚗 Vehicle Details</h3>
+                            <table width="100%" style="margin-bottom: 10px;">
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Vehicle:</td>
+                                    <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 16px;">{vehicle.get('make')} {vehicle.get('model')} ({vehicle.get('year')})</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Mileage:</td>
+                                    <td style="padding: 8px 0; text-align: right;">{vehicle.get('mileage', 0):,} miles</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Service Details -->
+                    <tr>
+                        <td style="padding: 0 30px 20px 30px;">
+                            <h3 style="margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">🔧 Service Details</h3>
+                            <table width="100%">
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Service Type:</td>
+                                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">{service.get('type', '').replace('_', ' ').title()}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Description:</td>
+                                    <td style="padding: 8px 0; text-align: right;">{service.get('description', '')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Urgency:</td>
+                                    <td style="padding: 8px 0; text-align: right;">{service.get('urgency', 'routine').title()}</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Service Provider -->
+                    <tr>
+                        <td style="padding: 0 30px 20px 30px;">
+                            <h3 style="margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">🏢 Service Provider</h3>
+                            <table width="100%">
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Provider:</td>
+                                    <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 16px;">{provider.get('name', '')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Location:</td>
+                                    <td style="padding: 8px 0; text-align: right;">{provider.get('location', '')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Phone:</td>
+                                    <td style="padding: 8px 0; text-align: right;"><a href="tel:{provider.get('phone', '')}" style="color: #007bff; text-decoration: none;">{provider.get('phone', '')}</a></td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Rating:</td>
+                                    <td style="padding: 8px 0; text-align: right;">{provider.get('rating', 0)}⭐</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Estimated Cost:</td>
+                                    <td style="padding: 8px 0; text-align: right; font-size: 20px; color: #28a745; font-weight: 700;">£{provider.get('estimated_cost', 0):,}</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Customer Details -->
+                    <tr>
+                        <td style="padding: 0 30px 20px 30px;">
+                            <h3 style="margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">👤 Customer Information</h3>
+                            <table width="100%">
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Name:</td>
+                                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">{customer.get('name')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Email:</td>
+                                    <td style="padding: 8px 0; text-align: right;">{customer.get('email')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Phone:</td>
+                                    <td style="padding: 8px 0; text-align: right;">{customer.get('phone')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #666;">Postcode:</td>
+                                    <td style="padding: 8px 0; text-align: right;">{customer.get('postcode')}</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- What to Bring -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <div style="background: #e7f3ff; padding: 20px; border-radius: 8px; border-left: 4px solid #007bff;">
+                                <h3 style="margin: 0 0 15px 0; color: #007bff;">📋 What to Bring</h3>
+                                <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                                    <li>Vehicle service book/history</li>
+                                    <li>Valid driving licence</li>
+                                    <li>Proof of address</li>
+                                    <li>Any warranty documents</li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Important Notes -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <div style="background: #fff3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #ffc107;">
+                                <h3 style="margin: 0 0 15px 0; color: #856404;">⚠️ Important Information</h3>
+                                <ul style="margin: 0; padding-left: 20px; line-height: 1.8; color: #856404;">
+                                    <li>{provider.get('name')} will call you 24 hours before your appointment</li>
+                                    <li>Please arrive 10 minutes early</li>
+                                    <li>Service duration: 2-4 hours (depending on service type)</li>
+                                    <li>To reschedule: Call {provider.get('phone')} at least 24 hours in advance</li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- CTA Buttons -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <table width="100%">
+                                <tr>
+                                    <td style="padding: 10px; text-align: center;">
+                                        <a href="tel:{provider.get('phone', '')}" style="display: inline-block; background: #007bff; color: white; padding: 15px 40px; text-decoration: none; border-radius: 25px; font-weight: 600; font-size: 16px;">📞 Call Provider</a>
+                                    </td>
+                                    <td style="padding: 10px; text-align: center;">
+                                        <a href="mailto:{self.config.support_email}" style="display: inline-block; background: #28a745; color: white; padding: 15px 40px; text-decoration: none; border-radius: 25px; font-weight: 600; font-size: 16px;">💬 Contact Support</a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Thank You Message -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px; text-align: center; color: #666; line-height: 1.6;">
+                            <p style="margin: 0; font-size: 16px;">Thank you for choosing <strong>{self.config.company_name}</strong> Service! 🔧✨</p>
+                            <p style="margin: 10px 0 0 0; font-size: 14px;">We'll take excellent care of your {vehicle.get('make')}!</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background: #f8f9fa; padding: 20px 30px; text-align: center; border-top: 1px solid #e0e0e0;">
+                            <p style="margin: 0 0 10px 0; color: #666; font-size: 13px;">
+                                Questions? Contact us at <a href="mailto:{self.config.support_email}" style="color: #007bff; text-decoration: none;">{self.config.support_email}</a>
+                            </p>
+                            <p style="margin: 0; color: #999; font-size: 12px;">
+                                © {datetime.now().year} {self.config.company_name}. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+"""
+        return html_body
+
     def _build_order_confirmation_html(
         self,
         order: Dict[str, Any],

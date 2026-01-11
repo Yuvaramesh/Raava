@@ -1,21 +1,21 @@
 """
-Raava AI Service Manager - Phase 2 (FIXED - Properly returns appointment_created flag)
+Raava AI Service Manager - Phase 2 FIXED
+CLEAN separation from Phase 1 - Only uses service-specific data
 """
 
 import os
 from typing import Dict, Any, List, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from config import OPENAI_API_KEY, LLM_MODEL_NAME, LLM_TEMPERATURE
 from datetime import datetime, timedelta
-from config import OPENAI_API_KEY, LLM_MODEL_NAME
-from database import db
-from service_scheduler import service_scheduler
-from service_providers import service_provider_aggregator
 import re
 
 
 class Phase2ServiceManager:
-    """Raava AI Service Manager - FIXED to properly return appointment status"""
+    """
+    Raava AI Service Manager - FIXED with clean service context
+    """
 
     def __init__(self):
         self.llm = ChatOpenAI(
@@ -24,27 +24,46 @@ class Phase2ServiceManager:
             openai_api_key=OPENAI_API_KEY,
         )
 
-        self.system_prompt = """You are the Raava AI Service Manager.
+        self.system_prompt = """You are the Raava AI Service Manager - vehicle maintenance and service specialist.
 
-Your job: Help customers book service appointments.
+🎯 MISSION: Help customers book service appointments with CLEAN SERVICE-ONLY DATA
 
-Flow:
-1. Get vehicle info (make, model, year)
-2. Understand service needed
-3. Get mileage
-4. Get postcode
-5. Show 3 providers, get selection
-6. Show 5 dates, get selection
-7. Get customer details (name, phone, email)
-8. CONFIRM appointment with all details
+💬 CONVERSATION FLOW:
 
-Once you have ALL information and user confirms, say:
-"APPOINTMENT BOOKED"
+1. **VEHICLE INFO**: Ask make, model, year, mileage
+2. **SERVICE REQUEST**: What service do they need?
+3. **CUSTOMER DETAILS**: Name, email, phone, postcode
+4. **PROVIDER SELECTION**: Show top 3 service centers
+5. **DATE SELECTION**: Pick preferred date/time
+6. **CONFIRM & BOOK**: Create appointment in Services collection
 
-Always end: [Replied by: Raava AI Service Manager]"""
+🔑 CRITICAL APPOINTMENT CREATION RULES:
+
+When you have ALL of these:
+✅ Vehicle info (make, model, year, mileage)
+✅ Service request details
+✅ Customer details (name, email, phone, postcode)
+✅ Selected provider
+✅ Appointment date confirmed
+
+Then you MUST respond with EXACTLY this format:
+
+"CREATE_APPOINTMENT_NOW
+
+Vehicle: [make model year - mileage miles]
+Service: [service type]
+Provider: [provider name, location]
+Date: [date and time]
+Customer: [name, email, phone]"
+
+This triggers the appointment creation system.
+
+NEVER use Phase 1 data like payment_method, finance_type, selected_vehicle!
+
+Always end with: [Replied by: Raava AI Service Manager]"""
 
     async def call(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Process service request - FIXED to return appointment_created properly"""
+        """Process with CLEAN service context"""
         messages = state.get("messages", [])
         session_context = state.get("context", {})
 
@@ -56,110 +75,204 @@ Always end: [Replied by: Raava AI Service Manager]"""
                     last_user_message = msg.content
                     break
 
-        # Initialize
+        # 🔥 CRITICAL: Initialize ONLY service-related fields
         if not session_context.get("service_stage"):
-            session_context["service_stage"] = "vehicle_identification"
-            session_context["vehicle_info"] = {}
-            session_context["service_request"] = {}
-            session_context["customer_service_info"] = {}
+            session_context = self._initialize_clean_service_context(session_context)
 
         print(f"\n🔧 SERVICE MANAGER - Stage: {session_context.get('service_stage')}")
-        print(f"📝 User: {last_user_message[:100]}")
+        print(f"🔧 User: {last_user_message}")
 
-        self._extract_appointment_from_history(messages, session_context)
+        # 🔥 Extract ONLY service fields (ignore Phase 1 fields)
+        service_context = self._extract_service_context(session_context)
 
-        if self._is_user_confirming(last_user_message, session_context):
-            print("✅ USER CONFIRMED - Starting full confirmation flow...")
-            print("=" * 70)
+        print(f"🔧 Clean Service Context: {service_context}")
 
-            # STEP 1: Validate all data
-            validation = self._validate_appointment_data(session_context)
-            if not validation["valid"]:
-                print(f"❌ VALIDATION FAILED: {validation['errors']}")
-                return {
-                    "messages": [
-                        AIMessage(
-                            content=f"Validation error: {', '.join(validation['errors'])}"
-                        )
-                    ],
-                    "context": session_context,
-                }
-            print("✅ STEP 1: All data validated successfully")
+        enhanced_context = ""
 
-            # STEP 2: Save appointment to database
-            print("\n💾 STEP 2: Saving appointment to database...")
-            appointment_result = self._create_service_appointment(session_context)
+        # 🔥 CRITICAL: First check if we're missing providers and should load them
+        if service_context.get(
+            "service_stage"
+        ) == "provider_selection" and not service_context.get("available_providers"):
 
-            if not appointment_result.get("success"):
-                print(f"❌ DATABASE SAVE FAILED: {appointment_result.get('message')}")
-                return {
-                    "messages": [
-                        AIMessage(
-                            content=f"Error saving appointment: {appointment_result.get('message', 'Unknown error')}"
-                        )
-                    ],
-                    "context": session_context,
-                }
+            # Load providers immediately
+            print(
+                "⚠️ Stage is provider_selection but no providers loaded - loading now..."
+            )
+            providers = self._search_service_providers(service_context)
+            service_context["available_providers"] = providers
+            enhanced_context += "\n\n🔧 SERVICE PROVIDERS:\n"
+            enhanced_context += self._format_providers(providers)
+            enhanced_context += "\nASK: Which provider? (1, 2, or 3)\n"
 
-            appointment_id = appointment_result.get("appointment_id")
-            print(f"✅ STEP 2: Appointment saved to database - ID: {appointment_id}")
+        # Also check if we just collected customer info
+        if (
+            service_context.get("service_stage") == "collecting_customer_info"
+            and service_context.get("customer_service_info")
+            and not service_context.get("available_providers")
+        ):
 
-            # STEP 3: Email sent (already handled in create_appointment)
-            email_status = appointment_result.get("email_sent", False)
-            if email_status:
+            missing = self._check_customer_info(
+                service_context["customer_service_info"]
+            )
+            if not missing:
+                # We have customer info, move to provider selection
+                print("✅ Customer info complete, searching providers...")
+                service_context["service_stage"] = "provider_selection"
+                providers = self._search_service_providers(service_context)
+                service_context["available_providers"] = providers
+                enhanced_context += "\n\n✅ CUSTOMER INFO COLLECTED\n"
+                enhanced_context += self._format_providers(providers)
+                enhanced_context += "\nASK: Which provider? (1, 2, or 3)\n"
+
+        # 🔥 FIRST: Check if we should CREATE APPOINTMENT
+        if self._should_create_appointment(service_context):
+            print("🔥 CREATING APPOINTMENT NOW!")
+            appointment_result = self._create_appointment_now(service_context)
+
+            if appointment_result.get("success"):
                 print(
-                    f"✅ STEP 3: Confirmation email sent to {session_context['customer_service_info'].get('email')}"
+                    f"✅ APPOINTMENT CREATED: {appointment_result.get('appointment_id')}"
                 )
+
+                # Update service context
+                service_context["appointment_created"] = True
+                service_context["appointment_id"] = appointment_result.get(
+                    "appointment_id"
+                )
+                service_context["service_stage"] = "appointment_completed"
+
+                # Save back to session
+                self._save_service_context(session_context, service_context)
+
+                return {
+                    "messages": [AIMessage(content=appointment_result["message"])],
+                    "context": session_context,
+                }
             else:
                 print(
-                    f"⚠️ STEP 3: Email sending reported as false - check SMTP configuration"
+                    f"❌ APPOINTMENT CREATION FAILED: {appointment_result.get('message')}"
+                )
+                enhanced_context += (
+                    f"\n\n❌ ERROR: {appointment_result.get('message')}\n"
                 )
 
-            # STEP 4: Clear session for fresh conversation
-            print(f"\n🧹 STEP 4: Clearing session for fresh conversation...")
-            cleared_context = self._clear_session_context(
-                session_context, appointment_id
-            )
-            print(f"✅ STEP 4: Session cleared - all service data reset")
-            print("=" * 70)
+        # 🔥 NEW: Process multiple intents in order
+        intents = self._analyze_multi_intent(last_user_message, service_context)
+        print(f"🔧 Detected {len(intents)} intent(s): {[i['type'] for i in intents]}")
 
-            # FINAL: Update context and return confirmation
-            cleared_context["appointment_created"] = True
-            cleared_context["appointment_id"] = appointment_id
+        for intent in intents:
+            print(f"🔧 Processing intent: {intent['type']}")
 
-            return {
-                "messages": [AIMessage(content=appointment_result["message"])],
-                "context": cleared_context,
-            }
+            # Handle vehicle info
+            if intent["type"] == "vehicle_info":
+                extracted = self._extract_vehicle_info(last_user_message)
+                if not service_context.get("vehicle_info"):
+                    service_context["vehicle_info"] = {}
+                service_context["vehicle_info"].update(extracted)
 
-        # Extract information from user message
-        self._extract_and_update_context(last_user_message, session_context)
+                missing = self._check_vehicle_info(service_context["vehicle_info"])
+                if not missing:
+                    service_context["service_stage"] = "service_request"
+                    enhanced_context += "\n\n✅ VEHICLE INFO COLLECTED\n"
+                    enhanced_context += "ASK: What service do you need? (e.g., annual service, MOT, brake check)\n"
+                else:
+                    enhanced_context += f"\n\n📋 Still need: {', '.join(missing)}\n"
 
-        # Check if we should show providers
-        if self._should_show_providers(session_context):
-            providers = self._find_providers(session_context)
-            if providers:
-                session_context["available_providers"] = providers
-                session_context["service_stage"] = "provider_selection"
+            # Handle service request
+            elif intent["type"] == "service_request":
+                service_context["service_request"] = {
+                    "type": intent.get("service_type", "general_service"),
+                    "description": last_user_message,
+                    "urgency": intent.get("urgency", "routine"),
+                }
+                service_context["service_stage"] = "collecting_customer_info"
+                enhanced_context += "\n\n✅ SERVICE REQUEST NOTED\n"
+                enhanced_context += "ASK: Your name, email, phone, and postcode?\n"
 
-        # Check if provider was selected
-        if self._check_provider_selection(last_user_message, session_context):
-            provider_idx = self._extract_provider_selection(last_user_message)
-            if provider_idx is not None and session_context.get("available_providers"):
-                providers = session_context["available_providers"]
-                if 0 <= provider_idx < len(providers):
-                    selected = providers[provider_idx]
-                    session_context["selected_provider"] = selected
-                    session_context["service_stage"] = "date_selection"
+            # Handle customer info
+            elif intent["type"] == "customer_info":
+                extracted = self._extract_customer_service_info(last_user_message)
+                if not service_context.get("customer_service_info"):
+                    service_context["customer_service_info"] = {}
+                service_context["customer_service_info"].update(extracted)
 
-                    # Generate available slots
-                    slots = self._get_available_slots(
-                        selected, session_context.get("service_request", {})
+                print(f"📋 Extracted customer info: {extracted}")
+                print(
+                    f"📋 Current customer info: {service_context['customer_service_info']}"
+                )
+
+                missing = self._check_customer_info(
+                    service_context["customer_service_info"]
+                )
+                if not missing:
+                    service_context["service_stage"] = "provider_selection"
+                    # Trigger provider search
+                    providers = self._search_service_providers(service_context)
+                    service_context["available_providers"] = providers
+                    enhanced_context += "\n\n✅ CUSTOMER INFO COLLECTED\n"
+                    enhanced_context += self._format_providers(providers)
+                    enhanced_context += "\nASK: Which provider? (1, 2, or 3)\n"
+                else:
+                    enhanced_context += f"\n\n📋 Still need: {', '.join(missing)}\n"
+                    enhanced_context += (
+                        f"Current info: {service_context['customer_service_info']}\n"
                     )
-                    session_context["available_slots"] = slots
 
-        # Build context for LLM
-        enhanced_context = self._build_enhanced_context(session_context)
+            # Handle provider selection
+            elif intent["type"] == "provider_selection":
+                idx = intent.get("provider_index")
+
+                # 🔥 CRITICAL: Ensure providers are loaded first
+                if not service_context.get("available_providers"):
+                    print(
+                        "⚠️ Trying to select provider but none loaded - loading now..."
+                    )
+                    providers = self._search_service_providers(service_context)
+                    service_context["available_providers"] = providers
+                    enhanced_context += "\n\n🔧 SERVICE PROVIDERS:\n"
+                    enhanced_context += self._format_providers(providers)
+
+                providers = service_context.get("available_providers", [])
+                if idx is not None and providers:
+                    if 0 <= idx < len(providers):
+                        service_context["selected_provider"] = providers[idx]
+                        service_context["service_stage"] = "date_selection"
+                        enhanced_context += (
+                            f"\n\n✅ PROVIDER SELECTED: {providers[idx]['name']}\n"
+                        )
+                        enhanced_context += "ASK: Preferred date and time? (e.g., 'Tomorrow 2pm' or 'Next Monday 10am' or '2026-01-15 11:00 AM')\n"
+                    else:
+                        enhanced_context += (
+                            f"\n\n❌ Invalid selection. Please choose 1, 2, or 3\n"
+                        )
+                else:
+                    enhanced_context += f"\n\n❌ No providers available. Please provide customer info first.\n"
+
+            # Handle date selection
+            elif intent["type"] == "date_selection":
+                date_info = self._parse_appointment_date(last_user_message)
+                if date_info:
+                    service_context["appointment_date"] = date_info
+                    service_context["service_stage"] = "ready_to_book"
+                    enhanced_context += (
+                        f"\n\n✅ DATE SELECTED: {date_info['formatted']}\n"
+                    )
+                    enhanced_context += "ASK: Confirm booking? (Yes/No)\n"
+
+            # Handle confirmation
+            elif intent["type"] == "confirmation":
+                if intent.get("confirmed"):
+                    service_context["service_stage"] = "ready_to_book"
+                    enhanced_context += (
+                        "\n\n✅ CONFIRMED - READY TO CREATE APPOINTMENT\n"
+                    )
+                else:
+                    enhanced_context += (
+                        "\n\n❌ Not confirmed. What would you like to change?\n"
+                    )
+
+        # Save service context back
+        self._save_service_context(session_context, service_context)
 
         # Build conversation
         conversation_messages = [
@@ -173,380 +286,167 @@ Always end: [Replied by: Raava AI Service Manager]"""
         response = await self.llm.ainvoke(conversation_messages)
         response_text = response.content
 
-        # Return with updated context
+        # 🔥 Check if LLM said to create appointment
+        if "CREATE_APPOINTMENT_NOW" in response_text:
+            print("🔥 LLM TRIGGERED APPOINTMENT CREATION")
+            appointment_result = self._create_appointment_now(service_context)
+
+            if appointment_result.get("success"):
+                response_text = appointment_result["message"]
+                service_context["appointment_created"] = True
+                service_context["appointment_id"] = appointment_result.get(
+                    "appointment_id"
+                )
+                self._save_service_context(session_context, service_context)
+
+        print(
+            f"✅ Service Manager returning - Stage: {service_context.get('service_stage')}"
+        )
+
         return {
             "messages": [AIMessage(content=response_text)],
             "context": session_context,
         }
 
-    def _is_user_confirming(self, text: str, context: Dict) -> bool:
-        """Check if user is confirming the appointment"""
-        # Check if user said CONFIRM, yes, or similar
-        text_lower = text.strip().lower()
+    def _initialize_clean_service_context(self, context: Dict) -> Dict:
+        """Initialize ONLY service fields"""
+        # Preserve session tracking
+        service_fields = {
+            "session_id": context.get("session_id"),
+            "routed": context.get("routed", True),
+            "active_agent": "phase2_service_manager",
+            # ONLY service-specific fields
+            "service_stage": "vehicle_info",
+            "vehicle_info": {},
+            "service_request": {},
+            "customer_service_info": {},
+            "available_providers": [],
+            "selected_provider": None,
+            "appointment_date": None,
+            "appointment_created": False,
+            "appointment_id": None,
+        }
+        return service_fields
 
-        # Must have all required information
+    def _extract_service_context(self, context: Dict) -> Dict:
+        """Extract ONLY service-related fields"""
+        return {
+            "session_id": context.get("session_id"),
+            "service_stage": context.get("service_stage", "vehicle_info"),
+            "vehicle_info": context.get("vehicle_info", {}),
+            "service_request": context.get("service_request", {}),
+            "customer_service_info": context.get("customer_service_info", {}),
+            "available_providers": context.get("available_providers", []),
+            "selected_provider": context.get("selected_provider"),
+            "appointment_date": context.get("appointment_date"),
+            "appointment_created": context.get("appointment_created", False),
+            "appointment_id": context.get("appointment_id"),
+        }
+
+    def _save_service_context(self, session_context: Dict, service_context: Dict):
+        """Save service context back to session"""
+        session_context.update(service_context)
+
+    def _should_create_appointment(self, context: Dict) -> bool:
+        """Check if we have everything needed for appointment - STRICT validation"""
         vehicle = context.get("vehicle_info", {})
         service = context.get("service_request", {})
+        customer = context.get("customer_service_info", {})
         provider = context.get("selected_provider")
-        date_info = context.get("appointment_date")
-        customer = context.get("customer_service_info", {})
+        date = context.get("appointment_date")
 
-        has_all_info = (
-            vehicle.get("make")
-            and service.get("type")
-            and provider
-            and date_info
-            and customer.get("name")
-            and customer.get("email")
-            and customer.get("phone")
+        print("\n🔍 APPOINTMENT READINESS CHECK:")
+
+        # Check vehicle info
+        vehicle_ok = all(
+            [
+                vehicle.get("make"),
+                vehicle.get("model"),
+            ]
+        )
+        print(
+            f"   Vehicle: {'✅' if vehicle_ok else '❌'} (make={vehicle.get('make')}, model={vehicle.get('model')})"
         )
 
-        if not has_all_info:
-            return False
-
-        # Check for confirmation keywords
-        confirm_keywords = [
-            "confirm",
-            "yes",
-            "okay",
-            "ok",
-            "let's",
-            "lets",
-            "book",
-            "proceed",
-            "ready",
-            "go",
-        ]
-        return any(keyword in text_lower for keyword in confirm_keywords)
-
-    def _check_if_date_selected(self, text: str, context: Dict) -> bool:
-        """Check if user just selected a date"""
-        # Must be in date_selection stage
-        if context.get("service_stage") != "date_selection":
-            return False
-
-        # Must have available slots
-        if not context.get("available_slots"):
-            return False
-
-        # Must have customer info
-        customer = context.get("customer_service_info", {})
-        if not all(
-            [customer.get("name"), customer.get("email"), customer.get("phone")]
-        ):
-            return False
-
-        # Check if message is a number 1-5
-        text_clean = text.strip().lower()
-        if re.match(r"^[1-5]$", text_clean):
-            return True
-
-        # Check for "option X" or "slot X"
-        if re.search(r"(option|slot|choice|number)\s*[1-5]", text_clean):
-            return True
-
-        return False
-
-    def _extract_date_selection(self, text: str, context: Dict) -> Optional[Dict]:
-        """Extract which date was selected"""
-        slots = context.get("available_slots", [])
-        if not slots:
-            return None
-
-        # Extract number
-        match = re.search(r"(\d)", text.strip())
-        if match:
-            idx = int(match.group(1)) - 1
-            if 0 <= idx < len(slots):
-                selected_slot = slots[idx]
-                print(f"📅 Selected date: {selected_slot.get('display')}")
-                return selected_slot
-
-        return None
-
-    def _should_show_providers(self, context: Dict) -> bool:
-        """Check if we should search for providers"""
-        # Need vehicle info
-        vehicle = context.get("vehicle_info", {})
-        if not vehicle.get("make"):
-            return False
-
-        # Need service type
-        if not context.get("service_request", {}).get("type"):
-            return False
-
-        # Need postcode
-        if not context.get("customer_service_info", {}).get("postcode"):
-            return False
-
-        # Haven't shown providers yet
-        if context.get("available_providers"):
-            return False
-
-        # Not already selected
-        if context.get("selected_provider"):
-            return False
-
-        return True
-
-    def _check_provider_selection(self, text: str, context: Dict) -> bool:
-        """Check if user selected a provider"""
-        if context.get("service_stage") != "provider_selection":
-            return False
-
-        if not context.get("available_providers"):
-            return False
-
-        # Check for number 1-3
-        if re.match(r"^[1-3]$", text.strip()):
-            return True
-
-        return False
-
-    def _extract_provider_selection(self, text: str) -> Optional[int]:
-        """Extract provider selection"""
-        match = re.search(r"(\d)", text.strip())
-        if match:
-            return int(match.group(1)) - 1
-        return None
-
-    def _find_providers(self, context: Dict) -> List[Dict]:
-        """Find service providers"""
-        vehicle = context.get("vehicle_info", {})
-        service_req = context.get("service_request", {})
-        customer = context.get("customer_service_info", {})
-
-        providers = service_provider_aggregator.find_providers(
-            make=vehicle.get("make", ""),
-            service_type=service_req.get("type", ""),
-            postcode=customer.get("postcode", ""),
-            radius_miles=25,
+        # Check service request
+        service_ok = service.get("type") is not None
+        print(
+            f"   Service: {'✅' if service_ok else '❌'} (type={service.get('type')})"
         )
 
-        return providers[:3]
-
-    def _extract_and_update_context(self, text: str, context: Dict):
-        """Extract information from user message"""
-        text_lower = text.lower()
-
-        # Extract vehicle info
-        vehicle_info = self._extract_vehicle_info(text)
-        if vehicle_info:
-            context["vehicle_info"].update(vehicle_info)
-
-        # Extract mileage
-        if not context["vehicle_info"].get("mileage"):
-            mileage_match = re.search(r"(\d{1,3}(?:,\d{3})*|\d+)", text_lower)
-            if mileage_match:
-                mileage_str = mileage_match.group(1).replace(",", "")
-                if len(mileage_str) <= 6:  # Reasonable mileage
-                    context["vehicle_info"]["mileage"] = int(mileage_str)
-
-        if not context["customer_service_info"].get("postcode"):
-            postcode_match = re.search(
-                r"\b([A-Z]{1,2}\d{1,2}\s?\d[A-Z]{2})\b", text.upper()
-            )
-            if postcode_match:
-                context["customer_service_info"]["postcode"] = postcode_match.group(1)
-
-        # Extract customer details
-        customer_details = self._extract_customer_details(text)
-        if customer_details:
-            context["customer_service_info"].update(customer_details)
-
-        # Detect service type
-        if not context["service_request"].get("type"):
-            service_type = self._detect_service_type(text_lower)
-            if service_type:
-                context["service_request"]["type"] = service_type["type"]
-                context["service_request"]["description"] = text
-                context["service_request"]["urgency"] = service_type.get(
-                    "urgency", "routine"
-                )
-
-    def _extract_vehicle_info(self, text: str) -> Dict[str, Any]:
-        """Extract vehicle information"""
-        info = {}
-
-        car_makes = [
-            "Ferrari",
-            "Lamborghini",
-            "Porsche",
-            "McLaren",
-            "Aston Martin",
-            "Bentley",
-            "Rolls-Royce",
-            "Mercedes",
-            "BMW",
-            "Audi",
-            "Jaguar",
-        ]
-        for make in car_makes:
-            if make.lower() in text.lower():
-                info["make"] = make
-                break
-
-        year_match = re.search(r"\b(19|20)(\d{2})\b", text)
-        if year_match:
-            info["year"] = int(year_match.group(0))
-
-        if info.get("make"):
-            pattern = f"{info['make']}\\s+(\\w+(?:\\s+\\w+)?)"
-            model_match = re.search(pattern, text, re.IGNORECASE)
-            if model_match:
-                info["model"] = model_match.group(1).strip()
-
-        return info
-
-    def _extract_customer_details(self, text: str) -> Dict[str, str]:
-        """Extract customer details"""
-        details = {}
-
-        email_match = re.search(
-            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", text
+        # Check customer info
+        customer_ok = all(
+            [
+                customer.get("email"),
+                customer.get("name"),
+            ]
         )
-        if email_match:
-            details["email"] = email_match.group(0)
+        print(
+            f"   Customer: {'✅' if customer_ok else '❌'} (email={customer.get('email')}, name={customer.get('name')})"
+        )
 
-        phone_match = re.search(r"(\+?\d{10,15})", text)
-        if phone_match:
-            details["phone"] = phone_match.group(0)
+        # Check provider
+        provider_ok = provider is not None
+        print(
+            f"   Provider: {'✅' if provider_ok else '❌'} ({provider.get('name') if provider else 'None'})"
+        )
 
-        # Extract name
-        text_for_name = text
-        if email_match:
-            text_for_name = text_for_name.replace(email_match.group(0), "")
-        if phone_match:
-            text_for_name = text_for_name.replace(phone_match.group(0), "")
+        # Check date
+        date_ok = date is not None
+        print(
+            f"   Date: {'✅' if date_ok else '❌'} ({date.get('formatted') if date else 'None'})"
+        )
 
-        parts = text_for_name.replace(",", " ").split()
-        name_candidates = []
+        # Stage must be ready
+        stage_ok = context.get("service_stage") == "ready_to_book"
+        print(
+            f"   Stage: {'✅' if stage_ok else '❌'} ({context.get('service_stage')})"
+        )
 
-        for word in parts:
-            if "@" in word or word.isdigit() or "+" in word:
-                continue
-            if word.lower() in ["my", "name", "is", "email", "phone", "and", "the"]:
-                continue
-            if len(word) > 1 and word.replace(".", "").isalpha():
-                name_candidates.append(word.strip())
+        # ALL must be true
+        all_ok = all(
+            [vehicle_ok, service_ok, customer_ok, provider_ok, date_ok, stage_ok]
+        )
 
-        if name_candidates:
-            name = " ".join(name_candidates[:2])
-            details["name"] = " ".join(word.capitalize() for word in name.split())
+        if all_ok:
+            print("   ✅ ALL REQUIREMENTS MET FOR APPOINTMENT CREATION")
+        else:
+            print("   ❌ MISSING REQUIRED DATA - CANNOT CREATE APPOINTMENT")
 
-        return details
+        return all_ok
 
-    def _detect_service_type(self, text_lower: str) -> Optional[Dict[str, str]]:
-        """Detect service type"""
-        if any(
-            word in text_lower for word in ["brake", "grinding", "noise", "warning"]
-        ):
-            return {"type": "repair", "urgency": "urgent"}
-
-        if any(word in text_lower for word in ["service", "annual", "maintenance"]):
-            return {"type": "scheduled_service", "urgency": "routine"}
-
-        if any(word in text_lower for word in ["upgrade", "enhance", "improve"]):
-            return {"type": "upgrade", "urgency": "routine"}
-
-        return None
-
-    def _get_available_slots(self, provider: Dict, service_request: Dict) -> List[Dict]:
-        """Get available slots"""
-        slots = []
-        today = datetime.now()
-
-        for i in range(5):
-            days_ahead = i + 1
-            slot_date = today + timedelta(days=days_ahead)
-
-            if slot_date.weekday() >= 5:
-                days_ahead += 2
-                slot_date = today + timedelta(days=days_ahead)
-
-            slots.append(
-                {
-                    "display": slot_date.strftime("%b %d, %Y at %H:%M").replace(
-                        slot_date.strftime("%H"), str(9 + i * 2)
-                    ),
-                    "date": slot_date.strftime("%Y-%m-%d"),
-                    "time": f"{9 + (i * 2):02d}:{'00' if i % 2 == 0 else '30'}",
-                }
-            )
-
-        return slots
-
-    def _build_enhanced_context(self, context: Dict) -> str:
-        """Build context summary for LLM"""
-        parts = ["\n\n📋 CURRENT STATUS:"]
-
-        vehicle = context.get("vehicle_info", {})
-        if vehicle.get("make"):
-            parts.append(
-                f"✅ Vehicle: {vehicle.get('make')} {vehicle.get('model', '')} ({vehicle.get('year', '')})"
-            )
-            if vehicle.get("mileage"):
-                parts.append(f"✅ Mileage: {vehicle['mileage']:,} miles")
-
-        service = context.get("service_request", {})
-        if service.get("type"):
-            parts.append(f"✅ Service: {service['type']}")
-
-        customer = context.get("customer_service_info", {})
-        if customer.get("postcode"):
-            parts.append(f"✅ Postcode: {customer['postcode']}")
-        if customer.get("name"):
-            parts.append(f"✅ Customer: {customer['name']}")
-        if customer.get("phone"):
-            parts.append(f"✅ Phone: {customer['phone']}")
-        if customer.get("email"):
-            parts.append(f"✅ Email: {customer['email']}")
-
-        if context.get("selected_provider"):
-            provider = context["selected_provider"]
-            parts.append(f"✅ Provider: {provider['name']}")
-
-        if context.get("appointment_date"):
-            apt_date = context["appointment_date"]
-            parts.append(f"✅ Date: {apt_date.get('display', '')}")
-
-        if context.get("appointment_created"):
-            parts.append(f"✅ APPOINTMENT BOOKED - Session cleared after booking")
-
-        return "\n".join(parts)
-
-    def _create_service_appointment(self, context: Dict) -> Dict[str, Any]:
-        """Create appointment in database"""
+    def _create_appointment_now(self, context: Dict) -> Dict[str, Any]:
+        """CREATE APPOINTMENT IN SERVICES COLLECTION"""
         try:
-            from service_appointment_manager import service_appointment_manager
+            from service_booking_manager import service_booking_manager
 
             vehicle = context.get("vehicle_info", {})
-            service_req = context.get("service_request", {})
-            provider = context.get("selected_provider", {})
-            date_info = context.get("appointment_date", {})
+            service = context.get("service_request", {})
             customer = context.get("customer_service_info", {})
+            provider = context.get("selected_provider", {})
+            date = context.get("appointment_date", {})
 
-            print(f"\n🔥 CREATING APPOINTMENT:")
+            print(f"\n🔥 CREATING SERVICE APPOINTMENT:")
             print(f"   Vehicle: {vehicle.get('make')} {vehicle.get('model')}")
-            print(f"   Customer: {customer.get('name')} - {customer.get('email')}")
-            print(f"   Date: {date_info.get('date')} at {date_info.get('time')}")
+            print(f"   Service: {service.get('type')}")
+            print(f"   Customer: {customer.get('email')}")
             print(f"   Provider: {provider.get('name')}")
 
-            customer["session_id"] = context.get("session_id", "")
-
-            result = service_appointment_manager.create_appointment(
-                vehicle=vehicle,
-                service_type=service_req.get("type"),
-                service_description=service_req.get("description"),
-                urgency=service_req.get("urgency", "routine"),
-                provider=provider,
-                appointment_date=date_info.get("date"),
-                appointment_time=date_info.get("time", "09:00"),
-                customer=customer,
-                recommendations=context.get("service_recommendations", {}),
+            # CREATE APPOINTMENT
+            result = service_booking_manager.create_service_appointment(
+                vehicle_info=vehicle,
+                service_request=service,
+                customer_info=customer,
+                provider_info=provider,
+                appointment_datetime=date.get("datetime"),
             )
 
-            return result
+            if result.get("success"):
+                print(f"✅ APPOINTMENT CREATED: {result.get('appointment_id')}")
+                return result
+            else:
+                print(f"❌ FAILED: {result.get('message')}")
+                return result
 
         except Exception as e:
             print(f"❌ EXCEPTION: {e}")
@@ -555,192 +455,389 @@ Always end: [Replied by: Raava AI Service Manager]"""
             traceback.print_exc()
             return {"success": False, "message": f"Error: {str(e)}"}
 
-    def _validate_appointment_data(self, context: Dict) -> Dict[str, Any]:
-        """Validate all required appointment data before saving"""
-        errors = []
+    def _analyze_multi_intent(self, text: str, context: Dict) -> List[Dict[str, Any]]:
+        """Analyze and detect MULTIPLE intents in one message - processes in order"""
+        text_lower = text.lower()
+        stage = context.get("service_stage", "")
+        intents = []
 
-        vehicle = context.get("vehicle_info", {})
-        if not vehicle.get("make"):
-            errors.append("Vehicle make not specified")
-        if not vehicle.get("model"):
-            errors.append("Vehicle model not specified")
+        print(f"🔍 Multi-intent analysis - Stage: {stage}, Text: {text}")
 
-        service = context.get("service_request", {})
-        if not service.get("type"):
-            errors.append("Service type not specified")
+        # 🔥 Detect all possible intents in order of priority
 
-        provider = context.get("selected_provider", {})
-        if not provider.get("name"):
-            errors.append("Service provider not selected")
-
-        date_info = context.get("appointment_date", {})
-        if not date_info.get("date"):
-            errors.append("Appointment date not selected")
-        if not date_info.get("time"):
-            errors.append("Appointment time not selected")
-
-        customer = context.get("customer_service_info", {})
-        if not customer.get("name"):
-            errors.append("Customer name not provided")
-        if not customer.get("email"):
-            errors.append("Customer email not provided")
-        if not customer.get("phone"):
-            errors.append("Customer phone not provided")
-
-        return {"valid": len(errors) == 0, "errors": errors}
-
-    def _clear_session_context(
-        self, context: Dict, appointment_id: str
-    ) -> Dict[str, Any]:
-        """Clear all service context to start fresh conversation"""
-        cleared_context = {
-            "session_id": context.get("session_id"),
-            "routed": False,
-            "active_agent": None,
-            "appointment_created": False,
-            "service_stage": "vehicle_identification",
-            "vehicle_info": {},
-            "service_request": {},
-            "selected_provider": None,
-            "appointment_date": {},
-            "customer_service_info": {},
-            "available_providers": None,
-            "available_slots": None,
-            "service_recommendations": {},
-            "last_completed_appointment_id": appointment_id,
-        }
-
-        return cleared_context
-
-    def _extract_appointment_from_history(
-        self, messages: List[Any], context: Dict
-    ) -> None:
-        """Extract appointment details from conversation history (AI responses)"""
-        for msg in reversed(messages):
-            if isinstance(msg, AIMessage):
-                text = msg.content
-
-                vehicle_match = re.search(
-                    r"Vehicle:\s*([A-Za-z\s]+?)\s*$$(\d{4})$$", text
-                )
-                if vehicle_match and not context["vehicle_info"].get("make"):
-                    parts = vehicle_match.group(1).strip().split()
-                    if parts:
-                        context["vehicle_info"]["make"] = parts[0]
-                        if len(parts) > 1:
-                            context["vehicle_info"]["model"] = " ".join(parts[1:])
-                        context["vehicle_info"]["year"] = int(vehicle_match.group(2))
-                        print(
-                            f"✅ Extracted vehicle: {context['vehicle_info']['make']} {context['vehicle_info']['model']} ({context['vehicle_info']['year']})"
-                        )
-
-                mileage_match = re.search(r"Mileage:\s*(\d+(?:,\d+)*)\s*miles", text)
-                if mileage_match and not context["vehicle_info"].get("mileage"):
-                    context["vehicle_info"]["mileage"] = int(
-                        mileage_match.group(1).replace(",", "")
-                    )
-                    print(
-                        f"✅ Extracted mileage: {context['vehicle_info']['mileage']} miles"
-                    )
-
-                service_match = re.search(r"Service:\s*([^\n-]+)", text)
-                if service_match and not context["service_request"].get("type"):
-                    service_raw = service_match.group(1).strip()
-                    context["service_request"]["type"] = service_raw
-                    context["service_request"]["description"] = service_raw
-                    print(f"✅ Extracted service: {service_raw}")
-
-                provider_match = re.search(
-                    r"Provider:\s*([^\n-]+?)(?:\s*—|\s*\(|$)", text
-                )
-                if provider_match and not context.get("selected_provider"):
-                    provider_name = provider_match.group(1).strip()
-                    context["selected_provider"] = {
-                        "name": provider_name,
-                        "location": "Selected",
-                        "tier": 2,
+        # 1. Provider selection (if stage is provider_selection OR if we have providers)
+        # Check for single digit 1-3 in the message
+        if stage == "provider_selection" or context.get("available_providers"):
+            # Look for standalone number 1-3
+            match = re.search(r"^([1-3])$", text.strip())
+            if match:
+                print(f"   ✅ Found provider selection: {match.group(1)}")
+                intents.append(
+                    {
+                        "type": "provider_selection",
+                        "provider_index": int(match.group(1)) - 1,
                     }
-                    print(f"✅ Extracted provider: {provider_name}")
+                )
 
-                date_patterns = [
-                    r"Date:\s*([A-Za-z]+\s+[A-Za-z]+\s+\d+,?\s+\d{4})\s*—\s*(\d{1,2}:\d{2})",  # Wed Jan 21, 2026 — 10:30
-                    r"Date:\s*([A-Za-z]+\s+[A-Za-z]+\s+\d+,?\s+\d{4})\s*$$[^)]*$$",  # Wed Jan 21, 2026 (London time)
+        # 2. Date selection
+        if (
+            re.search(r"\d{4}-\d{2}-\d{2}", text)  # 2026-01-13
+            or re.search(r"\d{2}/\d{2}/\d{4}", text)  # 13/01/2026
+            or re.search(r"\d{1,2}[:.]\d{2}", text)  # 11:30 or 11.30
+            or any(
+                w in text_lower
+                for w in [
+                    "tomorrow",
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday",
+                    "saturday",
+                    "sunday",
+                    "next week",
+                    "am",
+                    "pm",
                 ]
-                for pattern in date_patterns:
-                    date_match = re.search(pattern, text)
-                    if date_match and not context.get("appointment_date"):
-                        date_str = date_match.group(1).strip()
-                        # Extract time if available
-                        time_match = re.search(
-                            r"(\d{1,2}):(\d{2})",
-                            text[date_match.start() : date_match.end() + 20],
-                        )
-                        time_str = (
-                            time_match.group(0).strip() if time_match else "09:00"
-                        )
+            )
+        ):
+            print("   ✅ Found date selection")
+            intents.append({"type": "date_selection"})
 
-                        # Convert date to YYYY-MM-DD format
-                        try:
-                            from datetime import datetime
+        # 3. Confirmation (only if in ready_to_book stage)
+        if stage == "ready_to_book":
+            if any(
+                w in text_lower
+                for w in ["yes", "confirm", "ok", "sure", "book", "proceed"]
+            ):
+                print("   ✅ Found confirmation: YES")
+                intents.append({"type": "confirmation", "confirmed": True})
+            elif any(w in text_lower for w in ["no", "cancel", "wait", "change"]):
+                print("   ❌ Found confirmation: NO")
+                intents.append({"type": "confirmation", "confirmed": False})
 
-                            dt = datetime.strptime(
-                                date_str.replace(",", ""), "%a %b %d %Y"
-                            )
-                            formatted_date = dt.strftime("%Y-%m-%d")
-                        except:
-                            formatted_date = date_str
+        # 4. Customer info (email/phone)
+        if "@" in text or re.search(r"\+?\d{10,}", text):
+            print("   ✅ Found customer info (email/phone)")
+            intents.append({"type": "customer_info"})
 
-                        context["appointment_date"] = {
-                            "date": formatted_date,
-                            "time": time_str,
-                            "display": f"{date_str} at {time_str}",
-                        }
-                        print(f"✅ Extracted date: {formatted_date} at {time_str}")
-                        break
+        # 5. Vehicle info
+        if any(
+            w in text_lower
+            for w in [
+                "lamborghini",
+                "ferrari",
+                "porsche",
+                "bmw",
+                "mercedes",
+                "audi",
+                "mclaren",
+            ]
+        ):
+            print("   ✅ Found vehicle info (make mentioned)")
+            intents.append({"type": "vehicle_info"})
 
-                postcode_match = re.search(
-                    r"Postcode:\s*([A-Z0-9\s]+?)(?:\n|-|$)", text
-                )
-                if postcode_match and not context["customer_service_info"].get(
-                    "postcode"
-                ):
-                    context["customer_service_info"]["postcode"] = postcode_match.group(
-                        1
-                    ).strip()
-                    print(
-                        f"✅ Extracted postcode: {context['customer_service_info']['postcode']}"
-                    )
+        # 6. Service request
+        if any(
+            w in text_lower
+            for w in [
+                "service",
+                "mot",
+                "repair",
+                "check",
+                "maintenance",
+                "oil",
+                "brake",
+                "miles",
+            ]
+        ):
+            print("   ✅ Found service request")
+            intents.append(
+                {
+                    "type": "service_request",
+                    "service_type": "scheduled_service",
+                    "urgency": "routine",
+                }
+            )
 
-                customer_match = re.search(
-                    r"Customer:\s*([A-Za-z\s]+?)(?:\s*-|\n|$)", text
-                )
-                if customer_match and not context["customer_service_info"].get("name"):
-                    context["customer_service_info"]["name"] = customer_match.group(
-                        1
-                    ).strip()
-                    print(
-                        f"✅ Extracted customer: {context['customer_service_info']['name']}"
-                    )
+        # If no intents found, return general
+        if not intents:
+            print("   ⚠️ No specific intents - returning general")
+            intents.append({"type": "general"})
 
-                phone_match = re.search(r"Phone:\s*(\+?\d[\d\s\-()]+?)(?:\n|-|$)", text)
-                if phone_match and not context["customer_service_info"].get("phone"):
-                    context["customer_service_info"]["phone"] = phone_match.group(
-                        1
-                    ).strip()
-                    print(
-                        f"✅ Extracted phone: {context['customer_service_info']['phone']}"
-                    )
+        return intents
 
-                email_match = re.search(
-                    r"Email:\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,})", text
-                )
-                if email_match and not context["customer_service_info"].get("email"):
-                    context["customer_service_info"]["email"] = email_match.group(
-                        1
-                    ).strip()
-                    print(
-                        f"✅ Extracted email: {context['customer_service_info']['email']}"
-                    )
+    def _analyze_intent(self, text: str, context: Dict) -> Dict[str, Any]:
+        """Single intent analysis - DEPRECATED, use _analyze_multi_intent instead"""
+        # This is kept for backward compatibility but should use multi-intent
+        intents = self._analyze_multi_intent(text, context)
+        return intents[0] if intents else {"type": "general"}
+
+    def _extract_vehicle_info(self, text: str) -> Dict[str, str]:
+        """Extract vehicle info"""
+        info = {}
+        text_lower = text.lower()
+
+        # Make
+        makes = [
+            "lamborghini",
+            "ferrari",
+            "porsche",
+            "bmw",
+            "mercedes",
+            "audi",
+            "mclaren",
+        ]
+        for make in makes:
+            if make in text_lower:
+                info["make"] = make.title()
+                break
+
+        # Model
+        words = text.split()
+        if info.get("make"):
+            make_idx = next(
+                (i for i, w in enumerate(words) if w.lower() == info["make"].lower()),
+                -1,
+            )
+            if make_idx >= 0 and make_idx + 1 < len(words):
+                info["model"] = " ".join(words[make_idx + 1 : make_idx + 3])
+
+        # Year
+        year_match = re.search(r"(20\d{2})", text)
+        if year_match:
+            info["year"] = int(year_match.group(1))
+
+        # Mileage
+        mileage_match = re.search(r"(\d+)\s*(?:k|miles)", text_lower)
+        if mileage_match:
+            info["mileage"] = int(mileage_match.group(1))
+
+        return info
+
+    def _check_vehicle_info(self, vehicle: Dict) -> List[str]:
+        """Check missing vehicle info"""
+        missing = []
+        if not vehicle.get("make"):
+            missing.append("make")
+        if not vehicle.get("model"):
+            missing.append("model")
+        if not vehicle.get("year"):
+            missing.append("year")
+        if not vehicle.get("mileage"):
+            missing.append("mileage")
+        return missing
+
+    def _extract_customer_service_info(self, text: str) -> Dict[str, str]:
+        """Extract customer service info - FIXED"""
+        info = {}
+
+        print(f"📧 Extracting customer info from: {text}")
+
+        # Email
+        email = re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", text)
+        if email:
+            info["email"] = email.group(0)
+            print(f"   ✅ Email: {info['email']}")
+
+        # Phone - improved pattern for international numbers
+        phone = re.search(r"(\+?\d{10,15})", text)
+        if phone:
+            info["phone"] = phone.group(0)
+            print(f"   ✅ Phone: {info['phone']}")
+
+        # Postcode (UK format) - more flexible pattern
+        postcode = re.search(
+            r"\b([A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2})\b", text, re.IGNORECASE
+        )
+        if postcode:
+            info["postcode"] = postcode.group(0).upper()
+            print(f"   ✅ Postcode: {info['postcode']}")
+
+        # Name - extract from what's left after removing email, phone, postcode
+        text_clean = text
+        if email:
+            text_clean = text_clean.replace(email.group(0), "")
+        if phone:
+            text_clean = text_clean.replace(phone.group(0), "")
+        if postcode:
+            text_clean = text_clean.replace(postcode.group(0), "")
+
+        # Remove common words and separators
+        text_clean = re.sub(r"[,;]", " ", text_clean)
+        parts = text_clean.split()
+
+        # Filter out non-name words
+        name_candidates = []
+        for word in parts:
+            word = word.strip()
+            # Skip if it's too short, has numbers, or is a common word
+            if (
+                len(word) > 1
+                and word.replace(".", "").isalpha()
+                and word.lower()
+                not in [
+                    "my",
+                    "name",
+                    "is",
+                    "email",
+                    "phone",
+                    "postcode",
+                    "and",
+                    "the",
+                    "at",
+                ]
+            ):
+                name_candidates.append(word)
+
+        if name_candidates:
+            # Take first 1-2 words as name
+            info["name"] = " ".join(name_candidates[:2]).title()
+            print(f"   ✅ Name: {info['name']}")
+
+        print(f"   📊 Total extracted: {info}")
+        return info
+
+    def _check_customer_info(self, customer: Dict) -> List[str]:
+        """Check missing customer info"""
+        missing = []
+        if not customer.get("name"):
+            missing.append("name")
+        if not customer.get("email"):
+            missing.append("email")
+        if not customer.get("phone"):
+            missing.append("phone")
+        if not customer.get("postcode"):
+            missing.append("postcode")
+        return missing
+
+    def _search_service_providers(self, context: Dict) -> List[Dict]:
+        """Search service providers (mock for now)"""
+        # In production, would use real provider search
+        return [
+            {
+                "name": "Autoshield",
+                "location": "Cuffley, Hertfordshire",
+                "distance_miles": 15.6,
+                "rating": 4.9,
+                "specialties": ["Lamborghini specialist"],
+                "phone": "01707 888890",
+                "estimated_cost": 325,
+            },
+            {
+                "name": "Performance Direct",
+                "location": "London",
+                "distance_miles": 20.2,
+                "rating": 4.8,
+                "specialties": ["Exotic cars"],
+                "phone": "020 1234 5678",
+                "estimated_cost": 450,
+            },
+            {
+                "name": "Elite Motors",
+                "location": "Manchester",
+                "distance_miles": 180.5,
+                "rating": 4.7,
+                "specialties": ["Luxury service"],
+                "phone": "0161 123 4567",
+                "estimated_cost": 375,
+            },
+        ]
+
+    def _format_providers(self, providers: List[Dict]) -> str:
+        """Format providers"""
+        result = "\n\n🔧 SERVICE PROVIDERS:\n\n"
+        for i, p in enumerate(providers, 1):
+            result += f"{i}. **{p['name']}** ({p['location']})\n"
+            result += f"   • {p['distance_miles']} miles away\n"
+            result += f"   • Rating: {p['rating']}⭐\n"
+            result += f"   • Est. Cost: £{p['estimated_cost']}\n\n"
+        return result
+
+    def _parse_appointment_date(self, text: str) -> Optional[Dict]:
+        """Parse appointment date - FIXED to handle multiple formats"""
+        text_lower = text.lower()
+        now = datetime.now()
+
+        print(f"🗓️ Parsing date from: {text}")
+
+        # Try to extract date and time
+        date = None
+        hour = 10  # default hour
+        minute = 0  # default minute
+
+        # Format 1: YYYY-MM-DD
+        date_match = re.search(r"(\d{4})-(\d{2})-(\d{2})", text)
+        if date_match:
+            year, month, day = map(int, date_match.groups())
+            date = datetime(year, month, day)
+            print(f"   📅 Extracted date: {date.date()}")
+
+        # Format 2: DD/MM/YYYY
+        if not date:
+            date_match = re.search(r"(\d{2})/(\d{2})/(\d{4})", text)
+            if date_match:
+                day, month, year = map(int, date_match.groups())
+                date = datetime(year, month, day)
+                print(f"   📅 Extracted date: {date.date()}")
+
+        # Format 3: Relative dates
+        if not date:
+            if "tomorrow" in text_lower:
+                date = now + timedelta(days=1)
+                print(f"   📅 Tomorrow: {date.date()}")
+            elif "next week" in text_lower or "monday" in text_lower:
+                days_ahead = 7 - now.weekday()
+                date = now + timedelta(days=days_ahead)
+                print(f"   📅 Next Monday: {date.date()}")
+            elif "tuesday" in text_lower:
+                days_ahead = (1 - now.weekday()) % 7
+                date = now + timedelta(days=days_ahead if days_ahead > 0 else 7)
+                print(f"   📅 Tuesday: {date.date()}")
+            else:
+                # Default to tomorrow
+                date = now + timedelta(days=1)
+                print(f"   📅 Default (tomorrow): {date.date()}")
+
+        # Extract time
+        # Format: HH.MM or HH:MM or HH.MM am/pm
+        time_match = re.search(r"(\d{1,2})[.:](\d{2})", text)
+        if time_match:
+            hour = int(time_match.group(1))
+            minute = int(time_match.group(2))
+
+            # Handle AM/PM
+            if "pm" in text_lower and hour < 12:
+                hour += 12
+            elif "am" in text_lower and hour == 12:
+                hour = 0
+
+            print(f"   🕐 Extracted time: {hour:02d}:{minute:02d}")
+        else:
+            # Try to extract just hour
+            hour_match = re.search(r"(\d{1,2})\s*(?:am|pm)", text_lower)
+            if hour_match:
+                hour = int(hour_match.group(1))
+                if "pm" in text_lower and hour < 12:
+                    hour += 12
+                elif "am" in text_lower and hour == 12:
+                    hour = 0
+                print(f"   🕐 Extracted hour: {hour:02d}:00")
+
+        # Combine date and time
+        if date:
+            date = date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+            formatted = date.strftime("%A, %d %B %Y at %I:%M %p")
+            print(f"   ✅ Final datetime: {formatted}")
+
+            return {
+                "datetime": date,
+                "formatted": formatted,
+            }
+
+        print("   ❌ Could not parse date")
+        return None
 
 
 # Singleton

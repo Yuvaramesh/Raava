@@ -94,6 +94,7 @@ def get_cars():
 
 @app.route("/chat", methods=["POST"])
 def chat():
+    print("Api chat")
     """Enhanced chat with PROPER session clearing after appointments/orders"""
     try:
         data = request.json
@@ -385,7 +386,7 @@ def get_all_orders():
 def get_all_appointments():
     """Get service appointments"""
     try:
-        from service_appointment_manager import service_appointment_manager
+        from service_booking_manager import service_appointment_manager
 
         # Get from database
         if db is not None:

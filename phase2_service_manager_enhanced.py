@@ -66,7 +66,7 @@ Always end: [Replied by: Raava AI Service Manager]"""
 
         print(f"\n🔧 SERVICE MANAGER - Stage: {session_context.get('service_stage')}")
         print(f"📝 User: {last_user_message[:100]}")
-
+        print(self._is_user_confirming(last_user_message, session_context))
         if self._is_user_confirming(last_user_message, session_context):
             print("\n" + "=" * 70)
             print("✅ USER CONFIRMED - STARTING CONFIRMATION FLOW")
@@ -215,7 +215,7 @@ Always end: [Replied by: Raava AI Service Manager]"""
         """Save appointment to database with logging"""
         print("\n💾 SAVING APPOINTMENT TO DATABASE:")
         try:
-            from service_appointment_manager import service_appointment_manager
+            from service_booking_manager import service_appointment_manager
 
             vehicle = context.get("vehicle_info", {})
             service_req = context.get("service_request", {})
