@@ -54,5 +54,5 @@ langchain-core==0.1.42
 langgraph==0.0.26
 
 # Optional dependencies
-pillow==10.2.0
+pillow==11.0.0
 tavily-python==0.7.17
