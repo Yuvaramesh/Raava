@@ -55,4 +55,4 @@ langgraph==0.0.26
 
 # Optional dependencies
 pillow==10.2.0
-tavily-python>=1.0.0
+tavily-python==0.7.17
