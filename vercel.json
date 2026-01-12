@@ -17,11 +17,17 @@
     },
     {
       "src": "/(.*)",
-      "dest": "app.py"
+      "dest": "/app.py"
     }
   ],
   "env": {
     "FLASK_APP": "app.py",
+    "FLASK_ENV": "production",
     "PYTHONUNBUFFERED": "1"
+  },
+  "envObjects": {
+    "production": {
+      "FLASK_DEBUG": "0"
+    }
   }
 }
