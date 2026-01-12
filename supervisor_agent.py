@@ -21,7 +21,7 @@ class SupervisorAgent:
         self.llm = ChatOpenAI(
             model=LLM_MODEL_NAME,
             temperature=0.3,  # Lower temperature for routing decisions
-            openai_api_key=OPENAI_API_KEY,
+            api_key=OPENAI_API_KEY,
         )
 
         self.system_prompt = """You are the Raava Supervisor Agent - the intelligent router for the Raava Luxury Automotive Platform.
