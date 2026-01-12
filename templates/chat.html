@@ -559,6 +559,37 @@
         background: #f5f6ff;
         transform: translateY(-1px);
       }
+
+      /* Listing Card */
+      .listing-card {
+        background: white;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        text-align: center;
+        transition: transform 0.3s ease;
+      }
+
+      .listing-card:hover {
+        transform: translateY(-3px);
+      }
+
+      .listing-icon {
+        font-size: 28px;
+        margin-bottom: 8px;
+      }
+
+      .listing-title {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 4px;
+        font-size: 13px;
+      }
+
+      .listing-desc {
+        font-size: 11px;
+        color: #666;
+      }
     </style>
   </head>
   <body>
@@ -778,6 +809,12 @@
             // Show assistant response
             addMessage("assistant", data.reply);
 
+            if (data.listing_created && data.listing_id) {
+              console.log("🎉 Listing created:", data.listing_id);
+              showListingCard(data.listing_id);
+              showCompletionNotice("listing", data.listing_id);
+            }
+
             // 🔥 Handle session clearing
             if (data.session_ended) {
               console.log("🧹 Session ended by server");
@@ -876,11 +913,20 @@
           animation: slideInNotice 0.3s ease-out;
         `;
 
-        const icon = type === "purchase" ? "🚗" : "🔧";
+        const icon =
+          type === "purchase" ? "🚗" : type === "appointment" ? "🔧" : "📋";
         const title =
-          type === "purchase" ? "Order Complete!" : "Appointment Booked!";
+          type === "purchase"
+            ? "Order Complete!"
+            : type === "appointment"
+            ? "Appointment Booked!"
+            : "Listing Created!";
         const subtitle =
-          type === "purchase" ? `Order ID: ${id}` : `Appointment ID: ${id}`;
+          type === "purchase"
+            ? `Order ID: ${id}`
+            : type === "appointment"
+            ? `Appointment ID: ${id}`
+            : `Listing ID: ${id}`;
 
         notice.innerHTML = `
           <div style="font-size: 36px; text-align: center; margin-bottom: 12px;">${icon}</div>
@@ -898,6 +944,20 @@
           notice.style.animation = "slideOutNotice 0.3s ease-in";
           setTimeout(() => notice.remove(), 300);
         }, 8000);
+      }
+
+      function showListingCard(listingId) {
+        const listingDiv = document.createElement("div");
+        listingDiv.className = "listing-card";
+
+        listingDiv.innerHTML = `
+          <div class="listing-icon">📋</div>
+          <div class="listing-title">Listing Created</div>
+          <div class="listing-desc">Listing ID: ${listingId}</div>
+        `;
+
+        chatMessages.appendChild(listingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
       }
 
       function escapeHtml(text) {

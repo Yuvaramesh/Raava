@@ -153,6 +153,42 @@ def get_consignments():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/api/listing/<listing_id>", methods=["GET"])
+def get_listing(listing_id):
+    """Get a specific listing by ID"""
+    try:
+        if db is None:
+            return jsonify({"success": False, "message": "Database not connected"}), 500
+
+        consignments_col = db["Consignments"]
+        listing = consignments_col.find_one({"listing_id": listing_id})
+
+        if not listing:
+            return jsonify({"success": False, "message": "Listing not found"}), 404
+
+        # Format listing for display
+        formatted = {
+            "_id": str(listing["_id"]),
+            "listing_id": listing.get("listing_id"),
+            "status": listing.get("status"),
+            "vehicle": listing.get("vehicle", {}),
+            "pricing": listing.get("pricing", {}),
+            "condition": listing.get("condition", {}),
+            "owner": listing.get("owner", {}),
+            "created_at": (
+                listing.get("created_at").isoformat()
+                if isinstance(listing.get("created_at"), datetime)
+                else None
+            ),
+        }
+
+        return jsonify({"success": True, "listing": formatted})
+
+    except Exception as e:
+        print(f"❌ Error fetching listing: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     """Enhanced chat with ALL 3 PHASES"""
