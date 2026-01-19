@@ -1,9 +1,6 @@
 """
-Raava Supervisor Agent
-Routes user queries to appropriate specialized agents:
-- Phase 1: AI Concierge (Vehicle Acquisition)
-- Phase 2: AI Service Manager (Maintenance & Service)
-- Phase 3: AI Consigner (Vehicle Selling)
+Raava Supervisor Agent - FIXED ROUTING
+Routes user queries to appropriate specialized agents
 """
 
 from typing import Dict, Any, List
@@ -20,95 +17,73 @@ class SupervisorAgent:
     def __init__(self):
         self.llm = ChatOpenAI(
             model=LLM_MODEL_NAME,
-            temperature=0.3,  # Lower temperature for routing decisions
+            temperature=0.3,
             api_key=OPENAI_API_KEY,
         )
 
-        self.system_prompt = """You are the Raava Supervisor Agent - the intelligent router for the Raava Luxury Automotive Platform.
+        self.system_prompt = """You are a warm, welcoming concierge at Raava - a luxury automotive platform.
 
-ðŸŽ¯ YOUR ROLE:
-You greet customers and route them to the appropriate specialized agent based on their needs.
+🎯 YOUR JOB:
+1. Greet new visitors warmly
+2. Listen to what they need
+3. Route them to the right specialist IMMEDIATELY
 
-ðŸ¤– AVAILABLE AGENTS:
+**For First-Time Visitors:**
+"Welcome to Raava! I'm here to help. Are you looking to buy a car, service your vehicle, or sell one?"
 
-1. **AI CONCIERGE (Phase 1)** - Vehicle Acquisition
-   Routes to: phase1_concierge
-   Handles:
-   â€¢ Buying luxury/sports vehicles
-   â€¢ Vehicle search and recommendations
-   â€¢ Finance options and calculations
-   â€¢ Purchase orders, rentals, bookings
-   â€¢ Test drives and viewings
-   Keywords: buy, purchase, looking for, finance, acquire, rent, book, test drive
+**When They Express a Need:**
+Analyze their intent and route IMMEDIATELY:
 
-2. **AI SERVICE MANAGER (Phase 2)** - Maintenance & Service
-   Routes to: phase2_service_manager
-   Handles:
-   â€¢ Scheduled manufacturer services
-   â€¢ Routine maintenance reminders
-   â€¢ Non-routine maintenance guidance
-   â€¢ Service provider recommendations
-   â€¢ Appointment scheduling
-   â€¢ Upgrades and enhancements
-   Keywords: service, maintenance, repair, check-up, service reminder, upgrade, MOT, inspection
+- Buying/Looking for a car → Route to phase1_concierge
+- Service/Maintenance/Repair → Route to phase2_service_manager  
+- Selling/Consigning a car → Route to phase3_consigner
 
-3. **AI CONSIGNER (Phase 3)** - Vehicle Selling
-   Routes to: phase3_consigner
-   Handles:
-   â€¢ Selling your vehicle
-   â€¢ Professional photography
-   â€¢ Listing descriptions
-   â€¢ Valuation services
-   â€¢ Multi-marketplace listings
-   â€¢ Service history documentation
-   Keywords: sell, consign, list, valuation, value my car, selling
+**ROUTING FORMAT:**
+When you detect clear intent, respond with:
+"[Brief acknowledgment]
 
-ðŸ“‹ ROUTING PROTOCOL:
+ROUTE_TO: [agent_name]"
 
-**INITIAL GREETING (First contact):**
-"Welcome to Raava - the luxury automotive platform. I'm your Supervisor Agent.
+**CRITICAL:**
+- Route IMMEDIATELY when intent is clear
+- Don't ask clarifying questions if intent is obvious
+- Don't explain what each specialist does - just route
+- Be warm but brief
 
-I can connect you with our specialized teams:
+**Examples:**
 
-ðŸš— **Vehicle Acquisition** - Find and purchase your dream car
-ðŸ”§ **Service Management** - Maintain and upgrade your vehicle  
-ðŸ“¸ **Vehicle Consignment** - Sell your car with ease
+User: "I want to buy my dream car"
+You: "Wonderful! Let me connect you with our acquisition specialist.
 
-Which service interests you today?"
+ROUTE_TO: phase1_concierge"
 
-**AFTER USER SELECTS:**
-Acknowledge and route:
-"Perfect! Connecting you to our [SERVICE NAME]..."
+User: "I want to buy latest model lambo"
+You: "Perfect! Connecting you to our luxury vehicle specialist now.
 
-Then respond with: "ROUTE_TO: [agent_name]"
+ROUTE_TO: phase1_concierge"
 
-**ROUTING CODES:**
-â€¢ "ROUTE_TO: phase1_concierge" - For buying/acquisition
-â€¢ "ROUTE_TO: phase2_service_manager" - For service/maintenance
-â€¢ "ROUTE_TO: phase3_consigner" - For selling/consignment
+User: "buy"
+You: "Great! Let me get you to our vehicle specialist.
 
-**IF UNCLEAR:**
-Ask clarifying question:
-"I'd be happy to help. Are you looking to:
-A) Purchase a vehicle
-B) Service your vehicle
-C) Sell a vehicle"
+ROUTE_TO: phase1_concierge"
 
-ðŸŽ¯ RESPONSE RULES:
-â€¢ Be warm and professional
-â€¢ Keep responses concise (2-3 sentences)
-â€¢ Always end with routing decision or clarifying question
-â€¢ Use "[Replied by: Raava Supervisor Agent]" signature
+User: "I need service for my car"
+You: "Of course! Connecting you with our service expert.
 
-IMPORTANT: Once you determine the right agent, respond with "ROUTE_TO: [agent_name]" on a new line."""
+ROUTE_TO: phase2_service_manager"
+
+User: "I want to sell my Ferrari"
+You: "Excellent! Our consignment specialist will help you.
+
+ROUTE_TO: phase3_consigner"
+
+[Replied by: Raava Supervisor]
+"""
 
     async def call(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Process user query and route to appropriate agent"""
         messages = state.get("messages", [])
         session_context = state.get("context", {})
-
-        # Check if this is initial contact
-        is_first_message = len(messages) <= 1 or not session_context.get("routed")
 
         # Get last user message
         last_user_message = ""
@@ -118,15 +93,35 @@ IMPORTANT: Once you determine the right agent, respond with "ROUTE_TO: [agent_na
                     last_user_message = msg.content
                     break
 
-        # Analyze intent
-        routing_decision = self._analyze_routing_intent(
-            last_user_message, is_first_message
-        )
+        print(f"\n🎯 SUPERVISOR analyzing: '{last_user_message}'")
 
-        # Build conversation
+        # Quick routing check using keywords (bypass LLM for obvious cases)
+        quick_route = self._quick_route_check(last_user_message)
+
+        if quick_route:
+            print(f"⚡ QUICK ROUTE to {quick_route}")
+
+            # Generate appropriate response
+            if quick_route == "phase1_concierge":
+                response_text = "Perfect! Let me connect you with our vehicle acquisition specialist."
+            elif quick_route == "phase2_service_manager":
+                response_text = "Of course! Connecting you with our service expert."
+            else:  # phase3_consigner
+                response_text = "Excellent! Our consignment specialist will help you."
+
+            session_context["routed"] = True
+            session_context["active_agent"] = quick_route
+
+            return {
+                "messages": [AIMessage(content=response_text)],
+                "context": session_context,
+                "route_to": quick_route,
+            }
+
+        # Build conversation for LLM
         conversation_messages = [SystemMessage(content=self.system_prompt)]
 
-        # Add recent history
+        # Add recent history (last 2 exchanges)
         for msg in messages[-4:]:
             conversation_messages.append(msg)
 
@@ -134,124 +129,79 @@ IMPORTANT: Once you determine the right agent, respond with "ROUTE_TO: [agent_na
         response = await self.llm.ainvoke(conversation_messages)
         response_text = response.content
 
+        print(f"🤖 Supervisor response: {response_text[:100]}...")
+
         # Check if routing decision made
         if "ROUTE_TO:" in response_text:
             # Extract agent name
-            route_line = [
+            route_lines = [
                 line for line in response_text.split("\n") if "ROUTE_TO:" in line
-            ][0]
-            agent_name = route_line.split("ROUTE_TO:")[1].strip()
+            ]
+            if route_lines:
+                agent_name = route_lines[0].split("ROUTE_TO:")[1].strip()
 
-            # Update context
-            session_context["routed"] = True
-            session_context["active_agent"] = agent_name
-            session_context["routing_reason"] = routing_decision["reason"]
+                print(f"✅ ROUTING to: {agent_name}")
 
-            # Clean response (remove routing code from display)
-            response_text = response_text.replace(route_line, "").strip()
+                # Validate agent name
+                valid_agents = [
+                    "phase1_concierge",
+                    "phase2_service_manager",
+                    "phase3_consigner",
+                ]
+                if agent_name not in valid_agents:
+                    print(
+                        f"⚠️ Invalid agent: {agent_name}, defaulting to phase1_concierge"
+                    )
+                    agent_name = "phase1_concierge"
 
-            return {
-                "messages": [AIMessage(content=response_text)],
-                "context": session_context,
-                "route_to": agent_name,
-            }
+                # Update context
+                session_context["routed"] = True
+                session_context["active_agent"] = agent_name
 
+                # Clean response (remove routing code from display)
+                clean_response = response_text.split("ROUTE_TO:")[0].strip()
+
+                return {
+                    "messages": [AIMessage(content=clean_response)],
+                    "context": session_context,
+                    "route_to": agent_name,
+                }
+
+        # No routing detected - keep with supervisor
         return {
-            "messages": [response],
+            "messages": [AIMessage(content=response_text)],
             "context": session_context,
             "route_to": None,
         }
 
-    def _analyze_routing_intent(
-        self, text: str, is_first_message: bool
-    ) -> Dict[str, Any]:
-        """Analyze user intent to determine routing"""
+    def _quick_route_check(self, text: str) -> str | None:
+        """Quick keyword-based routing for obvious cases"""
         text_lower = text.lower()
 
-        # Keywords for each agent
-        acquisition_keywords = [
+        # Strong buy signals
+        buy_keywords = [
             "buy",
             "purchase",
             "looking for",
-            "find",
-            "finance",
-            "acquire",
-            "rent",
-            "rental",
-            "book",
-            "test drive",
-            "viewing",
+            "want to buy",
+            "lambo",
             "ferrari",
             "porsche",
-            "lamborghini",
-            "luxury car",
-            "sports car",
         ]
+        if any(kw in text_lower for kw in buy_keywords):
+            return "phase1_concierge"
 
-        service_keywords = [
-            "service",
-            "maintenance",
-            "repair",
-            "check-up",
-            "inspection",
-            "service reminder",
-            "upgrade",
-            "enhance",
-            "mot",
-            "oil change",
-            "brake",
-            "tire",
-            "warranty",
-        ]
+        # Strong service signals
+        service_keywords = ["service", "maintenance", "repair", "mot", "check", "fix"]
+        if any(kw in text_lower for kw in service_keywords):
+            return "phase2_service_manager"
 
-        consignment_keywords = [
-            "sell",
-            "consign",
-            "list",
-            "valuation",
-            "value my car",
-            "selling",
-            "photography",
-            "listing",
-            "market my car",
-        ]
+        # Strong sell signals
+        sell_keywords = ["sell", "consign", "list my", "selling"]
+        if any(kw in text_lower for kw in sell_keywords):
+            return "phase3_consigner"
 
-        # Count matches
-        acquisition_score = sum(1 for kw in acquisition_keywords if kw in text_lower)
-        service_score = sum(1 for kw in service_keywords if kw in text_lower)
-        consignment_score = sum(1 for kw in consignment_keywords if kw in text_lower)
-
-        # Determine intent
-        if acquisition_score > service_score and acquisition_score > consignment_score:
-            return {
-                "intent": "acquisition",
-                "confidence": "high",
-                "agent": "phase1_concierge",
-                "reason": "User expressed interest in purchasing/acquiring vehicle",
-            }
-        elif service_score > acquisition_score and service_score > consignment_score:
-            return {
-                "intent": "service",
-                "confidence": "high",
-                "agent": "phase2_service_manager",
-                "reason": "User needs vehicle service/maintenance support",
-            }
-        elif (
-            consignment_score > acquisition_score and consignment_score > service_score
-        ):
-            return {
-                "intent": "consignment",
-                "confidence": "high",
-                "agent": "phase3_consigner",
-                "reason": "User wants to sell/consign their vehicle",
-            }
-        else:
-            return {
-                "intent": "unclear",
-                "confidence": "low",
-                "agent": None,
-                "reason": "User intent needs clarification",
-            }
+        return None
 
 
 # Singleton instance

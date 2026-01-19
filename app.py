@@ -191,7 +191,7 @@ def get_listing(listing_id):
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    """Enhanced chat with ALL 3 PHASES"""
+    """Enhanced chat with ALL 3 PHASES - FIXED ROUTING"""
     try:
         data = request.json
         user_msg = data.get("message", "")
@@ -201,14 +201,19 @@ def chat():
             or str(uuid.uuid4())
         )
 
+        # 🔥 FIXED: Handle empty message as first greeting
         if not user_msg.strip():
+            flask_session["session_id"] = session_id
             return jsonify(
                 {
-                    "reply": "Welcome to Raava! How can I assist you today?",
+                    "reply": "Welcome to Raava! I'm here to help. Are you looking to buy a car, service your vehicle, or sell one?",
                     "success": True,
                     "session_id": session_id,
                 }
             )
+
+        # Store session_id in flask session
+        flask_session["session_id"] = session_id
 
         # Get or create session
         session_state = session_manager.get_session(session_id)
@@ -216,6 +221,7 @@ def chat():
         print(f"\n📋 Session: {session_id}")
         print(f"📊 Stage: {session_state.stage}")
         print(f"🤖 Active Agent: {session_state.active_agent}")
+        print(f"🎯 Routed: {session_state.routed}")
 
         # Prepare messages
         messages = []
@@ -278,8 +284,10 @@ def chat():
         listing_created = False
         listing_id = None
 
-        # Route to appropriate agent
+        # 🔥 FIXED: Route to appropriate agent
         if session_state.routed and session_state.active_agent:
+            print(f"🎯 Routing to: {session_state.active_agent}")
+
             if session_state.active_agent == "phase1_concierge":
                 # Handle vehicle acquisition
                 result_state = run_async(phase1_concierge.call(state))
@@ -394,13 +402,41 @@ def chat():
                     print(f"✅ LISTING CREATED: {listing_id}")
 
             else:
-                ai_reply = "Agent in development"
+                # 🔥 FIXED: Unknown agent - let supervisor handle it again
+                print(
+                    f"⚠️ Unknown agent: {session_state.active_agent} - reverting to supervisor"
+                )
+
+                # Clear bad routing
+                session_manager.update_session(
+                    session_id,
+                    {
+                        "routed": False,
+                        "active_agent": None,
+                    },
+                )
+
+                # Use supervisor
+                result_state = run_async(supervisor_agent.call(state))
+                ai_reply = result_state["messages"][-1].content
+
+                if result_state.get("route_to"):
+                    print(f"🎯 Supervisor re-routing to: {result_state['route_to']}")
+                    session_manager.update_session(
+                        session_id,
+                        {
+                            "routed": True,
+                            "active_agent": result_state["route_to"],
+                        },
+                    )
         else:
             # Use supervisor to route
+            print("🎯 Using supervisor for routing...")
             result_state = run_async(supervisor_agent.call(state))
             ai_reply = result_state["messages"][-1].content
 
             if result_state.get("route_to"):
+                print(f"🎯 Supervisor routing to: {result_state['route_to']}")
                 session_manager.update_session(
                     session_id,
                     {
