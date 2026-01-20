@@ -1,8 +1,7 @@
 """
-Raava Enhanced App - ALL 3 PHASES COMPLETE
-Phase 1: Vehicle Acquisition
-Phase 2: Service Management
-Phase 3: Vehicle Consignment
+Raava Enhanced App - FIXED AUTO-GREETING & SMART ROUTING
+- Auto-greets users on first load
+- Routes based on query intent (no asking buy/service/sell)
 """
 
 from flask import Flask, render_template, request, jsonify, session as flask_session
@@ -18,10 +17,17 @@ import uuid
 from config import MONGO_CONNECTION_STRING, DB_NAME
 from db_schema_manager import (
     db,
-    cars_collection,
     orders_collection,
     conversations_collection,
 )
+
+# Use Scraped_Cars collection
+from database import db as database_instance
+
+scraped_cars_collection = (
+    database_instance["Scraped_Cars"] if database_instance is not None else None
+)
+
 
 # Import agents - ALL 3 PHASES
 from supervisor_agent import supervisor_agent
@@ -74,14 +80,14 @@ def listings_page():
 
 @app.route("/api/cars", methods=["GET"])
 def get_cars():
-    """Get cars from Cars collection"""
+    """Get cars from Scraped_Cars collection"""
     try:
         make = request.args.get("make", "")
         query = {}
         if make:
             query["make"] = {"$regex": make, "$options": "i"}
 
-        cars = list(cars_collection.find(query).limit(50))
+        cars = list(scraped_cars_collection.find(query).limit(50))
 
         formatted_cars = []
         for car in cars:
@@ -191,7 +197,7 @@ def get_listing(listing_id):
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    """Enhanced chat with ALL 3 PHASES - FIXED ROUTING"""
+    """Enhanced chat with FIXED AUTO-GREETING & SMART ROUTING"""
     try:
         data = request.json
         user_msg = data.get("message", "")
@@ -201,12 +207,12 @@ def chat():
             or str(uuid.uuid4())
         )
 
-        # 🔥 FIXED: Handle empty message as first greeting
+        # 🔥 FIXED: Auto-greet on empty message (first load)
         if not user_msg.strip():
             flask_session["session_id"] = session_id
             return jsonify(
                 {
-                    "reply": "Welcome to Raava! I'm here to help. Are you looking to buy a car, service your vehicle, or sell one?",
+                    "reply": "Welcome to Raava! How can I help you today? 😊",
                     "success": True,
                     "session_id": session_id,
                 }
@@ -284,7 +290,7 @@ def chat():
         listing_created = False
         listing_id = None
 
-        # 🔥 FIXED: Route to appropriate agent
+        # 🔥 ROUTING LOGIC
         if session_state.routed and session_state.active_agent:
             print(f"🎯 Routing to: {session_state.active_agent}")
 
@@ -402,12 +408,11 @@ def chat():
                     print(f"✅ LISTING CREATED: {listing_id}")
 
             else:
-                # 🔥 FIXED: Unknown agent - let supervisor handle it again
+                # Unknown agent - revert to supervisor
                 print(
                     f"⚠️ Unknown agent: {session_state.active_agent} - reverting to supervisor"
                 )
 
-                # Clear bad routing
                 session_manager.update_session(
                     session_id,
                     {
@@ -416,7 +421,6 @@ def chat():
                     },
                 )
 
-                # Use supervisor
                 result_state = run_async(supervisor_agent.call(state))
                 ai_reply = result_state["messages"][-1].content
 
@@ -430,8 +434,8 @@ def chat():
                         },
                     )
         else:
-            # Use supervisor to route
-            print("🎯 Using supervisor for routing...")
+            # 🔥 Use supervisor for SMART ROUTING (no asking)
+            print("🎯 Using supervisor for smart routing...")
             result_state = run_async(supervisor_agent.call(state))
             ai_reply = result_state["messages"][-1].content
 
@@ -551,7 +555,11 @@ def health_check():
         if db is not None:
             db.command("ping")
             db_status = "connected"
-            car_count = cars_collection.count_documents({})
+            car_count = (
+                scraped_cars_collection.count_documents({})
+                if scraped_cars_collection
+                else 0
+            )
             order_count = orders_collection.count_documents({})
             appointment_count = db["Services"].count_documents({})
             listing_count = db["Consignments"].count_documents({})
