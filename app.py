@@ -592,14 +592,18 @@ def health_check():
     )
 
 
-if __name__ == "__main__":
-    print("\n" + "=" * 70)
-    print("🚗 RAAVA COMPLETE PLATFORM - ALL 3 PHASES")
-    print("=" * 70)
-    print("✅ Phase 1: AI Concierge (Vehicle Acquisition)")
-    print("✅ Phase 2: AI Service Manager (Maintenance & Service)")
-    print("✅ Phase 3: AI Consigner (Vehicle Consignment)")
-    print("=" * 70 + "\n")
+# if __name__ == "__main__":
+#     print("\n" + "=" * 70)
+#     print("🚗 RAAVA COMPLETE PLATFORM - ALL 3 PHASES")
+#     print("=" * 70)
+#     print("✅ Phase 1: AI Concierge (Vehicle Acquisition)")
+#     print("✅ Phase 2: AI Service Manager (Maintenance & Service)")
+#     print("✅ Phase 3: AI Consigner (Vehicle Consignment)")
+#     print("=" * 70 + "\n")
 
-    session_manager.cleanup_expired_sessions()
-    app.run(debug=True, host="0.0.0.0", port=5000)
+#     session_manager.cleanup_expired_sessions()
+#     app.run(debug=True, host="0.0.0.0", port=5000)
+if __name__ != "__main__":
+    # This runs in Vercel serverless environment
+    # No need for app.run()
+    pass
