@@ -616,7 +616,7 @@
       <!-- Chat Header -->
       <div class="chat-header">
         <div class="chat-header-info">
-          <h2>Your AI Car Concierge</h2>
+          <h2>Manager</h2>
           <p>Buy, Service, or Sell Your Vehicle</p>
         </div>
         <div class="chat-status">
@@ -682,7 +682,7 @@
       // Clear ended sessions
       if (sessionId) {
         const endedSessions = JSON.parse(
-          localStorage.getItem("raava_ended_sessions") || "[]"
+          localStorage.getItem("raava_ended_sessions") || "[]",
         );
         if (endedSessions.includes(sessionId)) {
           localStorage.removeItem("raava_session_id");
@@ -732,7 +732,7 @@
           console.error("Error getting greeting:", error);
           addMessage(
             "assistant",
-            "Hey there! Welcome to Raava! 👋\n\nI'm here to help with anything car-related. What brings you here today?"
+            "Hey there! Welcome to Raava! 👋\n\nI'm here to help with anything car-related. What brings you here today?",
           );
         }
       }
@@ -769,13 +769,13 @@
 
             if (data.session_ended) {
               const endedSessions = JSON.parse(
-                localStorage.getItem("raava_ended_sessions") || "[]"
+                localStorage.getItem("raava_ended_sessions") || "[]",
               );
               if (sessionId && !endedSessions.includes(sessionId)) {
                 endedSessions.push(sessionId);
                 localStorage.setItem(
                   "raava_ended_sessions",
-                  JSON.stringify(endedSessions)
+                  JSON.stringify(endedSessions),
                 );
               }
               localStorage.removeItem("raava_session_id");
@@ -785,19 +785,19 @@
                 showCompletionNotice(
                   "Order Complete!",
                   "✅",
-                  `Order ID: ${data.order_id || "N/A"}`
+                  `Order ID: ${data.order_id || "N/A"}`,
                 );
               } else if (data.appointment_created) {
                 showCompletionNotice(
                   "Appointment Booked!",
                   "🔧",
-                  `Appointment ID: ${data.appointment_id || "N/A"}`
+                  `Appointment ID: ${data.appointment_id || "N/A"}`,
                 );
               } else if (data.listing_created) {
                 showCompletionNotice(
                   "Listing Created!",
                   "📸",
-                  `Listing ID: ${data.listing_id || "N/A"}`
+                  `Listing ID: ${data.listing_id || "N/A"}`,
                 );
               }
             }
@@ -807,7 +807,7 @@
           console.error("Error:", error);
           addMessage(
             "assistant",
-            "Sorry, I encountered an error. Please try again."
+            "Sorry, I encountered an error. Please try again.",
           );
         } finally {
           sendBtn.disabled = false;

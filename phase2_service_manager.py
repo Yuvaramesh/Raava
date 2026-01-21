@@ -1,6 +1,6 @@
 """
-Raava AI Service Manager - Natural Conversational Style
-Human-like service booking experience with immediate appointment creation
+Raava AI Service Manager - Phase 2 UPDATED
+Complete flow with appointment creation, database storage, and email confirmation
 """
 
 import os
@@ -12,13 +12,13 @@ from datetime import datetime, timedelta
 import re
 
 
-class phase2_service_manager:
-    """Raava AI Service Manager - Natural conversation flow"""
+class Phase2ServiceManager:
+    """Raava AI Service Manager - Natural conversation with complete appointment booking"""
 
     def __init__(self):
         self.llm = ChatOpenAI(
             model=LLM_MODEL_NAME,
-            temperature=0.7,  # Higher for more natural responses
+            temperature=0.7,
             openai_api_key=OPENAI_API_KEY,
         )
 
@@ -71,24 +71,6 @@ class phase2_service_manager:
 "How many miles has she done?"
 "What's your postcode so I can find you the best places nearby?"
 
-**After collecting postcode, present providers like this:**
-
-"Alright, I've found some great options near you in [area]:
-
-1. **Autoshield** - Cuffley (16 miles away)
-   • Lamborghini specialists with ex-factory techs
-   • 4.9⭐ rating • Around £325
-
-2. **Performance Marques** - Surrey (20 miles)
-   • Italian supercar experts
-   • 4.8⭐ • About £340
-
-3. **Elite Motors** - Manchester (longer drive, but excellent)
-   • Supercar service center
-   • 4.7⭐ • £375
-
-Which one catches your eye?"
-
 **CRITICAL RULES:**
 - NEVER repeat questions already answered
 - Progress forward systematically
@@ -114,7 +96,7 @@ Which one catches your eye?"
                     last_user_message = msg.content
                     break
 
-        # Initialize
+        # Initialize service context
         if not session_context.get("service_stage"):
             session_context["service_stage"] = "vehicle_make"
             session_context["vehicle_info"] = {}
@@ -126,8 +108,8 @@ Which one catches your eye?"
             session_context["appointment_created"] = False
 
         stage = session_context.get("service_stage")
-        print(f"\n🔧 STAGE: {stage}")
-        print(f"📝 USER: {last_user_message}")
+        print(f"\n🔧 SERVICE MANAGER - Stage: {stage}")
+        print(f"📝 User: {last_user_message}")
 
         # Check if already completed
         if session_context.get("appointment_created"):
@@ -149,10 +131,6 @@ Which one catches your eye?"
                 session_context["vehicle_info"]["make"] = make
                 session_context["service_stage"] = "vehicle_model"
                 enhanced_context = f"✅ Make: {make}\nNEXT: Ask naturally about the model. React positively to the make!"
-            else:
-                enhanced_context = (
-                    "ASK: What kind of car do you have? Be friendly and interested!"
-                )
 
         elif stage == "vehicle_model":
             model = last_user_message.strip()
@@ -253,7 +231,7 @@ Which one catches your eye?"
             if date_info:
                 session_context["appointment_date"] = date_info
 
-                # IMMEDIATELY CREATE APPOINTMENT - NO CONFIRMATION NEEDED
+                # 🔥 IMMEDIATELY CREATE APPOINTMENT - NO CONFIRMATION NEEDED
                 print("\n🚀 AUTO-CREATING APPOINTMENT NOW...")
 
                 result = self._create_appointment_now(session_context)
@@ -280,11 +258,13 @@ I've just sent a confirmation email to **{customer['email']}** with all the deta
 • What to bring (service book, ID, etc.)
 • Provider contact: {provider['phone']}
 
-They'll give you a call the day before to confirm. The {customer.get('service_request', {}).get('description', 'service')} usually takes 2-4 hours.
+They'll give you a call the day before to confirm. The service usually takes 2-4 hours.
 
 **Quick tip:** Try to arrive about 10 minutes early, and they'll take great care of your {vehicle['make']}!
 
-Need anything else? 😊"""
+Need anything else? 😊
+
+[Replied by: Raava Service Advisor]"""
 
                     return {
                         "messages": [AIMessage(content=confirmation_msg)],
@@ -315,6 +295,64 @@ Need anything else? 😊"""
             "context": session_context,
         }
 
+    def _create_appointment_now(self, context: Dict) -> Dict[str, Any]:
+        """
+        CREATE APPOINTMENT IN SERVICES COLLECTION
+        Store in database and send email confirmation
+        """
+        print("\n" + "=" * 70)
+        print("📅 CREATING APPOINTMENT IN SERVICES COLLECTION")
+        print("=" * 70)
+
+        try:
+            from service_booking_manager import service_booking_manager
+
+            vehicle = context.get("vehicle_info", {})
+            service = context.get("service_request", {})
+            customer = context.get("customer_service_info", {})
+            provider = context.get("selected_provider", {})
+            date = context.get("appointment_date", {})
+
+            print(f"\n📊 Appointment Data:")
+            print(
+                f"   Vehicle: {vehicle.get('make')} {vehicle.get('model')} ({vehicle.get('year')})"
+            )
+            print(f"   Customer: {customer.get('name')} - {customer.get('email')}")
+            print(f"   Provider: {provider.get('name')}")
+            print(f"   Date: {date.get('formatted')}")
+
+            # Create appointment using service_booking_manager
+            result = service_booking_manager.create_service_appointment(
+                vehicle_info=vehicle,
+                service_request=service,
+                customer_info=customer,
+                provider_info=provider,
+                appointment_datetime=date.get("datetime"),
+            )
+
+            if result.get("success"):
+                appointment_id = result.get("appointment_id")
+                print(f"\n✅ APPOINTMENT CREATED: {appointment_id}")
+                print(f"✅ STORED IN SERVICES COLLECTION")
+                print(f"✅ EMAIL SENT TO: {customer.get('email')}")
+
+                return {
+                    "success": True,
+                    "appointment_id": appointment_id,
+                    "appointment": result.get("appointment"),
+                }
+            else:
+                print(f"\n❌ APPOINTMENT CREATION FAILED")
+                print(f"   Error: {result.get('message')}")
+                return {"success": False, "message": result.get("message")}
+
+        except Exception as e:
+            print(f"\n❌ EXCEPTION: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return {"success": False, "message": f"Error: {str(e)}"}
+
     def _extract_make(self, text: str) -> Optional[str]:
         """Extract vehicle make"""
         makes = [
@@ -327,6 +365,11 @@ Need anything else? 😊"""
             "McLaren",
             "Aston Martin",
             "Bentley",
+            "Vauxhall",
+            "Ford",
+            "Toyota",
+            "Honda",
+            "Nissan",
         ]
         text_lower = text.lower()
         for make in makes:
@@ -441,25 +484,25 @@ Need anything else? 😊"""
                 },
             ]
         else:
-            # Default providers
+            # Default providers for other makes
             return [
                 {
-                    "name": "Premium Auto Care",
-                    "location": "Central London",
+                    "name": "City Mechanic Pro",
+                    "location": "Battersea",
                     "distance_miles": 5.2,
                     "rating": 4.8,
                     "phone": "020 1234 5678",
-                    "estimated_cost": 450,
-                    "specialties": ["Luxury vehicle specialist", "Full service"],
+                    "estimated_cost": 250,
+                    "specialties": ["All makes", "Full service", "MOT"],
                 },
                 {
-                    "name": "Elite Motors",
-                    "location": "West London",
+                    "name": "Premium Auto Care",
+                    "location": "Central London",
                     "distance_miles": 8.5,
                     "rating": 4.7,
                     "phone": "020 8765 4321",
-                    "estimated_cost": 375,
-                    "specialties": ["Performance cars", "Track prep"],
+                    "estimated_cost": 300,
+                    "specialties": ["Luxury vehicles", "Performance cars"],
                 },
                 {
                     "name": "City Car Service",
@@ -467,13 +510,13 @@ Need anything else? 😊"""
                     "distance_miles": 12.0,
                     "rating": 4.6,
                     "phone": "020 5555 1234",
-                    "estimated_cost": 325,
+                    "estimated_cost": 220,
                     "specialties": ["General service", "MOT testing"],
                 },
             ]
 
     def _parse_appointment_date(self, text: str) -> Optional[Dict]:
-        """Parse date and time"""
+        """Parse date and time from natural language"""
         text_lower = text.lower()
         now = datetime.now()
 
@@ -483,9 +526,9 @@ Need anything else? 😊"""
         # Extract date
         date = None
 
-        # Format 1: "22 jan 2026" or "22 january 2026"
+        # Format 1: "24 Jan 2026 - 11:00AM" or "24 Jan 2026, 11.30"
         date_match = re.search(
-            r"(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(?:uary|ruary|ch|il|e|y)?(?:\s+(\d{4}))?",
+            r"(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(?:uary|ruary|ch|il|e|y)?\s+(\d{4})",
             text_lower,
         )
         if date_match:
@@ -504,9 +547,9 @@ Need anything else? 😊"""
                 "nov": 11,
                 "dec": 12,
             }
-            month_str = date_match.group(2)[:3]  # Get first 3 letters
+            month_str = date_match.group(2)[:3]
             month = month_map.get(month_str)
-            year = int(date_match.group(3)) if date_match.group(3) else now.year
+            year = int(date_match.group(3))
             if month:
                 date = datetime(year, month, day)
 
@@ -543,46 +586,6 @@ Need anything else? 😊"""
             "formatted": date.strftime("%A, %d %B %Y at %I:%M %p"),
         }
 
-    def _create_appointment_now(self, context: Dict) -> Dict[str, Any]:
-        """Create appointment in Services collection and send email"""
-        try:
-            from service_booking_manager import service_booking_manager
-
-            vehicle = context.get("vehicle_info", {})
-            service = context.get("service_request", {})
-            customer = context.get("customer_service_info", {})
-            provider = context.get("selected_provider", {})
-            date = context.get("appointment_date", {})
-
-            print(f"\n🔥 CREATING APPOINTMENT:")
-            print(
-                f"   Vehicle: {vehicle.get('make')} {vehicle.get('model')} ({vehicle.get('year')})"
-            )
-            print(f"   Customer: {customer.get('name')} - {customer.get('email')}")
-            print(f"   Provider: {provider.get('name')}")
-            print(f"   Date: {date.get('formatted')}")
-
-            result = service_booking_manager.create_service_appointment(
-                vehicle_info=vehicle,
-                service_request=service,
-                customer_info=customer,
-                provider_info=provider,
-                appointment_datetime=date.get("datetime"),
-            )
-
-            if result.get("success"):
-                print(f"✅ APPOINTMENT CREATED: {result.get('appointment_id')}")
-                print(f"✅ EMAIL SENT TO: {customer.get('email')}")
-
-            return result
-
-        except Exception as e:
-            print(f"❌ ERROR CREATING APPOINTMENT: {e}")
-            import traceback
-
-            traceback.print_exc()
-            return {"success": False, "message": f"Error: {str(e)}"}
-
 
 # Singleton
-phase2_service_manager = phase2_service_manager()
+phase2_service_manager = Phase2ServiceManager()
