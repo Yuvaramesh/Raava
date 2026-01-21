@@ -16,9 +16,7 @@ class SupervisorAgent:
 
     def __init__(self):
         self.llm = ChatOpenAI(
-            model=LLM_MODEL_NAME,
-            temperature=0.3,
-            api_key=OPENAI_API_KEY,
+            model=LLM_MODEL_NAME, temperature=0.3, openai_api_key=OPENAI_API_KEY
         )
 
         self.system_prompt = """You are an intelligent routing system for Raava - a luxury automotive platform.

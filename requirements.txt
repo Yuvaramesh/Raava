@@ -40,11 +40,12 @@ pymongo==4.6.1
 python-dotenv==1.0.0
 
 # 🔒 LangChain + OpenAI compatible versions
-openai==1.12.0
+openai==1.10.0
 langchain==0.1.16
 langchain-openai==0.1.1
 langchain-core==0.1.42
 langgraph==0.0.26
+
 
 requests==2.31.0
 beautifulsoup4==4.12.3
