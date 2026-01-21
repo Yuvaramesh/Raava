@@ -3,11 +3,13 @@ services:
     name: raava-platform
     env: python
     plan: free
+    runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --worker-class gevent --workers 1 --bind 0.0.0.0:$PORT app:app
+    # Use simple gunicorn without gevent
+    startCommand: gunicorn --workers 2 --timeout 120 --bind 0.0.0.0:$PORT app:app
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: 3.11.0 # Changed from 3.13.4 to 3.11.0 for better compatibility
       - key: MONGO_CONNECTION_STRING
         sync: false
       - key: OPENAI_API_KEY
@@ -22,3 +24,5 @@ services:
         sync: false
       - key: DB_NAME
         value: Raava_Sales
+      - key: FLASK_ENV
+        value: production

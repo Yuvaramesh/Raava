@@ -48,4 +48,3 @@ langgraph==0.0.26
 requests==2.31.0
 beautifulsoup4==4.12.3
 gunicorn==21.2.0
-gevent==23.9.1
