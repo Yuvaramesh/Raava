@@ -4,12 +4,12 @@ services:
     env: python
     plan: free
     runtime: python
-    buildCommand: pip install -r requirements.txt
-    # Use simple gunicorn without gevent
-    startCommand: gunicorn --workers 2 --timeout 120 --bind 0.0.0.0:$PORT app:app
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    # Simple gunicorn command with increased timeout
+    startCommand: gunicorn --workers 1 --threads 2 --timeout 120 --bind 0.0.0.0:$PORT app:app
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.0 # Changed from 3.13.4 to 3.11.0 for better compatibility
+        value: 3.10.0
       - key: MONGO_CONNECTION_STRING
         sync: false
       - key: OPENAI_API_KEY
@@ -26,3 +26,4 @@ services:
         value: Raava_Sales
       - key: FLASK_ENV
         value: production
+    healthCheckPath: /api/health

@@ -34,19 +34,22 @@
 # beautifulsoup4==4.12.3
 # pillow==11.0.0
 # tavily-python==0.7.17
-
+# Core Flask and MongoDB
 flask==3.0.0
 pymongo==4.6.1
 python-dotenv==1.0.0
-
-# 🔒 LangChain + OpenAI compatible versions
-openai==1.10.0
-langchain==0.1.16
-langchain-openai==0.1.1
-langchain-core==0.1.42
-langgraph==0.0.26
-
-
 requests==2.31.0
 beautifulsoup4==4.12.3
+
+# FIXED: Compatible OpenAI + LangChain versions
+openai==1.12.0
+langchain==0.1.10
+langchain-openai==0.0.8
+langchain-core==0.1.28
+langgraph==0.0.26
+
+# Web server
 gunicorn==21.2.0
+
+# Additional utilities
+pydantic==2.5.3

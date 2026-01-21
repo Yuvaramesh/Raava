@@ -550,30 +550,38 @@ def get_all_appointments():
 
 @app.route("/api/health", methods=["GET"])
 def health_check():
-    """Health check"""
+    """Health check - simplified for render"""
     try:
+        db_status = "unknown"
+        car_count = order_count = appointment_count = listing_count = 0
+
         if db is not None:
-            db.command("ping")
-            db_status = "connected"
-            car_count = (
-                scraped_cars_collection.count_documents({})
-                if scraped_cars_collection
-                else 0
-            )
-            order_count = orders_collection.count_documents({})
-            appointment_count = db["Services"].count_documents({})
-            listing_count = db["Consignments"].count_documents({})
+            try:
+                db.command("ping")
+                db_status = "connected"
+
+                if scraped_cars_collection:
+                    car_count = scraped_cars_collection.count_documents({})
+                if orders_collection:
+                    order_count = orders_collection.count_documents({})
+                if db["Services"]:
+                    appointment_count = db["Services"].count_documents({})
+                if db["Consignments"]:
+                    listing_count = db["Consignments"].count_documents({})
+            except Exception as e:
+                print(f"DB query error: {e}")
+                db_status = "connected_limited"
         else:
             db_status = "disconnected"
-            car_count = order_count = appointment_count = listing_count = 0
-    except:
+    except Exception as e:
+        print(f"Health check error: {e}")
         db_status = "error"
-        car_count = order_count = appointment_count = listing_count = 0
 
     return jsonify(
         {
             "status": "healthy",
             "service": "Raava Complete Platform",
+            "timestamp": datetime.utcnow().isoformat(),
             "database": {
                 "status": db_status,
                 "cars": car_count,
@@ -582,28 +590,24 @@ def health_check():
                 "listings": listing_count,
             },
             "features": {
-                "session_management": "✅ Active",
-                "email_service": f"✅ Active",
-                "phase1_concierge": "✅ Active (Vehicle Acquisition)",
-                "phase2_service_manager": "✅ Active (Maintenance & Service)",
-                "phase3_consigner": "✅ Active (Vehicle Consignment)",
+                "session_management": "Active",
+                "email_service": "Active",
+                "phase1_concierge": "Active (Vehicle Acquisition)",
+                "phase2_service_manager": "Active (Maintenance & Service)",
+                "phase3_consigner": "Active (Vehicle Consignment)",
             },
         }
     )
 
 
-# if __name__ == "__main__":
-#     print("\n" + "=" * 70)
-#     print("🚗 RAAVA COMPLETE PLATFORM - ALL 3 PHASES")
-#     print("=" * 70)
-#     print("✅ Phase 1: AI Concierge (Vehicle Acquisition)")
-#     print("✅ Phase 2: AI Service Manager (Maintenance & Service)")
-#     print("✅ Phase 3: AI Consigner (Vehicle Consignment)")
-#     print("=" * 70 + "\n")
+if __name__ == "__main__":
+    print("\n" + "=" * 70)
+    print("🚗 RAAVA COMPLETE PLATFORM - ALL 3 PHASES")
+    print("=" * 70)
+    print("✅ Phase 1: AI Concierge (Vehicle Acquisition)")
+    print("✅ Phase 2: AI Service Manager (Maintenance & Service)")
+    print("✅ Phase 3: AI Consigner (Vehicle Consignment)")
+    print("=" * 70 + "\n")
 
-#     session_manager.cleanup_expired_sessions()
-#     app.run(debug=True, host="0.0.0.0", port=5000)
-if __name__ != "__main__":
-    # This runs in Vercel serverless environment
-    # No need for app.run()
-    pass
+    session_manager.cleanup_expired_sessions()
+    app.run(debug=True, host="0.0.0.0", port=5000)
