@@ -550,38 +550,30 @@ def get_all_appointments():
 
 @app.route("/api/health", methods=["GET"])
 def health_check():
-    """Health check - simplified for render"""
+    """Health check"""
     try:
-        db_status = "unknown"
-        car_count = order_count = appointment_count = listing_count = 0
-
         if db is not None:
-            try:
-                db.command("ping")
-                db_status = "connected"
-
-                if scraped_cars_collection:
-                    car_count = scraped_cars_collection.count_documents({})
-                if orders_collection:
-                    order_count = orders_collection.count_documents({})
-                if db["Services"]:
-                    appointment_count = db["Services"].count_documents({})
-                if db["Consignments"]:
-                    listing_count = db["Consignments"].count_documents({})
-            except Exception as e:
-                print(f"DB query error: {e}")
-                db_status = "connected_limited"
+            db.command("ping")
+            db_status = "connected"
+            car_count = (
+                scraped_cars_collection.count_documents({})
+                if scraped_cars_collection
+                else 0
+            )
+            order_count = orders_collection.count_documents({})
+            appointment_count = db["Services"].count_documents({})
+            listing_count = db["Consignments"].count_documents({})
         else:
             db_status = "disconnected"
-    except Exception as e:
-        print(f"Health check error: {e}")
+            car_count = order_count = appointment_count = listing_count = 0
+    except:
         db_status = "error"
+        car_count = order_count = appointment_count = listing_count = 0
 
     return jsonify(
         {
             "status": "healthy",
             "service": "Raava Complete Platform",
-            "timestamp": datetime.utcnow().isoformat(),
             "database": {
                 "status": db_status,
                 "cars": car_count,
@@ -590,11 +582,11 @@ def health_check():
                 "listings": listing_count,
             },
             "features": {
-                "session_management": "Active",
-                "email_service": "Active",
-                "phase1_concierge": "Active (Vehicle Acquisition)",
-                "phase2_service_manager": "Active (Maintenance & Service)",
-                "phase3_consigner": "Active (Vehicle Consignment)",
+                "session_management": "✅ Active",
+                "email_service": f"✅ Active",
+                "phase1_concierge": "✅ Active (Vehicle Acquisition)",
+                "phase2_service_manager": "✅ Active (Maintenance & Service)",
+                "phase3_consigner": "✅ Active (Vehicle Consignment)",
             },
         }
     )
