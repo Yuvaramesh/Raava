@@ -1,8 +1,5 @@
 """
-Order Manager - PRODUCTION READY VERSION
-Handles bookings, rentals, and purchases
-Stores orders in Raava_Sales.Orders collection
-Sends confirmation emails
+Order Manager - FIXED: Proper price extraction and storage
 """
 
 from datetime import datetime, timedelta
@@ -12,7 +9,7 @@ import uuid
 
 
 class OrderManager:
-    """Manages vehicle orders - PRODUCTION READY"""
+    """Manages vehicle orders - FIXED for proper price handling"""
 
     ORDER_TYPES = ["purchase", "rental", "booking"]
     ORDER_STATUSES = ["pending", "confirmed", "completed", "cancelled"]
@@ -35,6 +32,42 @@ class OrderManager:
                 print(f"❌ Failed to load collections: {e}")
         return self._orders_col, self._cars_col, self._users_col
 
+    def _extract_price(self, vehicle: Dict[str, Any]) -> int:
+        """
+        Extract price from vehicle data - handles multiple formats
+        Returns: integer price value
+        """
+        # Direct price field (integer/float)
+        if "price" in vehicle:
+            price = vehicle["price"]
+            if isinstance(price, (int, float)):
+                return int(price)
+            elif isinstance(price, str):
+                # Handle string format like "£62,749"
+                cleaned = (
+                    price.replace("£", "").replace(",", "").replace(" ", "").strip()
+                )
+                try:
+                    return int(cleaned) if cleaned.isdigit() else 0
+                except:
+                    return 0
+
+        # Nested pricing object (AutoTrader format)
+        if "pricing" in vehicle and isinstance(vehicle["pricing"], dict):
+            price_str = vehicle["pricing"].get("price", "£0")
+            if isinstance(price_str, str):
+                cleaned = (
+                    price_str.replace("£", "").replace(",", "").replace(" ", "").strip()
+                )
+                try:
+                    return int(cleaned) if cleaned.isdigit() else 0
+                except:
+                    return 0
+            elif isinstance(price_str, (int, float)):
+                return int(price_str)
+
+        return 0
+
     def create_order(
         self,
         order_type: str,
@@ -43,19 +76,7 @@ class OrderManager:
         finance_details: Optional[Dict[str, Any]] = None,
         rental_details: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Create a new order in the Orders collection
-
-        Args:
-            order_type: "purchase", "rental", or "booking"
-            vehicle: Vehicle details from Cars collection
-            customer: Customer information
-            finance_details: Finance option selected (for purchases)
-            rental_details: Rental period and terms (for rentals)
-
-        Returns:
-            Order document with order_id
-        """
+        """Create a new order in the Orders collection"""
         try:
             orders_col, cars_col, users_col = self._get_collections()
 
@@ -73,7 +94,12 @@ class OrderManager:
             print(f"{'='*70}")
             print(f"Order ID: {order_id}")
             print(f"Order Type: {order_type}")
+
+            # Extract vehicle price properly
+            vehicle_price = self._extract_price(vehicle)
+
             print(f"Vehicle: {vehicle.get('make')} {vehicle.get('model')}")
+            print(f"Price (extracted): £{vehicle_price:,}")
             print(f"Customer: {customer.get('name')} ({customer.get('email')})")
             print(f"Payment: {'Finance' if finance_details else 'Cash'}")
 
@@ -82,13 +108,13 @@ class OrderManager:
                 "order_id": order_id,
                 "order_type": order_type,
                 "status": "pending",
-                # Vehicle information
+                # Vehicle information - ENSURE price is an integer
                 "vehicle": {
                     "vehicle_id": str(vehicle.get("_id", "")),
                     "make": vehicle.get("make", ""),
                     "model": vehicle.get("model", ""),
                     "year": vehicle.get("year", ""),
-                    "price": vehicle.get("price", 0),
+                    "price": vehicle_price,  # Use extracted price
                     "mileage": vehicle.get("mileage", 0),
                     "fuel_type": vehicle.get("fuel_type", ""),
                     "body_type": vehicle.get("body_type", vehicle.get("style", "")),
@@ -100,6 +126,7 @@ class OrderManager:
                         "title",
                         f"{vehicle.get('make')} {vehicle.get('model')} ({vehicle.get('year')})",
                     ),
+                    "subtitle": vehicle.get("subtitle", ""),
                 },
                 # Customer information
                 "customer": {
@@ -131,15 +158,16 @@ class OrderManager:
                     "total_cost": finance_details.get("total_cost", 0),
                     "balloon_payment": finance_details.get("balloon_payment", 0),
                 }
-                order["total_amount"] = finance_details.get(
-                    "total_cost", vehicle.get("price", 0)
-                )
+                order["total_amount"] = finance_details.get("total_cost", vehicle_price)
 
                 print(f"Finance Type: {finance_details.get('type')}")
                 print(
                     f"Monthly Payment: £{finance_details.get('monthly_payment', 0):,.2f}"
                 )
                 print(f"Provider: {finance_details.get('provider')}")
+                print(
+                    f"Balloon Payment: £{finance_details.get('balloon_payment', 0):,.2f}"
+                )
 
             elif order_type == "rental" and rental_details:
                 start_date = rental_details.get("start_date", datetime.utcnow())
@@ -187,7 +215,7 @@ class OrderManager:
                 order["total_amount"] = 0
 
             else:
-                order["total_amount"] = vehicle.get("price", 0)
+                order["total_amount"] = vehicle_price
 
             print(f"Total Amount: £{order['total_amount']:,}")
 
@@ -210,12 +238,13 @@ class OrderManager:
                 print(f"   Order {order_id} found in Orders collection")
                 print(f"   Customer: {verification.get('customer', {}).get('email')}")
                 print(f"   Vehicle: {verification.get('vehicle', {}).get('title')}")
+                print(f"   Price: £{verification.get('vehicle', {}).get('price', 0):,}")
                 print(f"   Status: {verification.get('status')}")
             else:
                 print(f"❌ VERIFICATION FAILED")
                 print(f"   Order {order_id} NOT found in database!")
 
-            # Update user record (FIXED: proper None check)
+            # Update user record
             if customer.get("email") and users_col is not None:
                 self._update_user_orders(customer["email"], order_id, users_col)
 
@@ -279,6 +308,74 @@ class OrderManager:
 
             traceback.print_exc()
             return False
+
+    def _generate_order_confirmation_message(self, order: Dict[str, Any]) -> str:
+        """Generate confirmation message based on order type"""
+        order_type = order["order_type"]
+        order_id = order["order_id"]
+        vehicle = order["vehicle"]
+        customer = order["customer"]
+
+        vehicle_title = vehicle["title"]
+        vehicle_price = vehicle.get("price", 0)
+
+        if order_type == "purchase":
+            if "finance" in order:
+                finance = order["finance"]
+                msg = f"""✅ **PURCHASE ORDER CONFIRMED**
+
+**Order ID:** {order_id}
+
+**Vehicle:** {vehicle_title}
+**Price:** £{vehicle_price:,}
+
+**Finance Details:**
+• Type: {finance['type']}
+• Provider: {finance['provider']}
+• Monthly Payment: £{finance['monthly_payment']:,.2f}
+• Term: {finance['term_months']} months
+• Deposit: £{finance['deposit_amount']:,.2f}
+• APR: {finance['apr']}%
+{f"• Optional Final Payment: £{finance['balloon_payment']:,.2f}" if finance.get('balloon_payment') else ""}
+
+**Customer:** {customer['name']}
+**Email:** {customer['email']}
+**Phone:** {customer['phone']}
+
+**Next Steps:**
+1. Confirmation email sent to {customer['email']}
+2. Finance application processing (24-48 hours)
+3. Our team will contact you to arrange delivery
+4. Vehicle preparation: 3-5 working days
+
+Thank you for choosing Raava! Your luxury automotive experience begins now! 🚗✨
+
+[Replied by: Raava AI Concierge]"""
+            else:
+                msg = f"""✅ **PURCHASE ORDER CONFIRMED**
+
+**Order ID:** {order_id}
+
+**Vehicle:** {vehicle_title}
+**Total Amount:** £{order['total_amount']:,}
+
+**Customer:** {customer['name']}
+**Email:** {customer['email']}
+**Phone:** {customer['phone']}
+
+**Next Steps:**
+1. Confirmation email sent to {customer['email']}
+2. Payment instructions will be sent separately
+3. Delivery scheduled within 7 working days
+4. All documentation prepared
+
+We look forward to delivering your {vehicle['make']} {vehicle['model']}!
+
+[Replied by: Raava AI Concierge]"""
+
+            return msg
+
+        return f"Order {order_id} created successfully"
 
     def get_order(self, order_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve order by order_id"""
@@ -394,72 +491,6 @@ class OrderManager:
                 ].isoformat()
 
         return order
-
-    def _generate_order_confirmation_message(self, order: Dict[str, Any]) -> str:
-        """Generate confirmation message based on order type"""
-        order_type = order["order_type"]
-        order_id = order["order_id"]
-        vehicle = order["vehicle"]
-        customer = order["customer"]
-
-        vehicle_title = vehicle["title"]
-
-        if order_type == "purchase":
-            if "finance" in order:
-                finance = order["finance"]
-                msg = f"""✅ **PURCHASE ORDER CONFIRMED**
-
-**Order ID:** {order_id}
-
-**Vehicle:** {vehicle_title}
-**Price:** £{vehicle['price']:,}
-
-**Finance Details:**
-• Type: {finance['type']}
-• Provider: {finance['provider']}
-• Monthly Payment: £{finance['monthly_payment']:,.2f}
-• Term: {finance['term_months']} months
-• Deposit: £{finance['deposit_amount']:,.2f}
-• APR: {finance['apr']}%
-
-**Customer:** {customer['name']}
-**Email:** {customer['email']}
-**Phone:** {customer['phone']}
-
-**Next Steps:**
-1. Confirmation email sent to {customer['email']}
-2. Finance application processing (24-48 hours)
-3. Our team will contact you to arrange delivery
-4. Vehicle preparation: 3-5 working days
-
-Thank you for choosing Raava! Your luxury automotive experience begins now! 🚗✨
-
-[Replied by: Raava AI Concierge]"""
-            else:
-                msg = f"""✅ **PURCHASE ORDER CONFIRMED**
-
-**Order ID:** {order_id}
-
-**Vehicle:** {vehicle_title}
-**Total Amount:** £{order['total_amount']:,}
-
-**Customer:** {customer['name']}
-**Email:** {customer['email']}
-**Phone:** {customer['phone']}
-
-**Next Steps:**
-1. Confirmation email sent to {customer['email']}
-2. Payment instructions will be sent separately
-3. Delivery scheduled within 7 working days
-4. All documentation prepared
-
-We look forward to delivering your {vehicle['make']} {vehicle['model']}!
-
-[Replied by: Raava AI Concierge]"""
-
-            return msg
-
-        return f"Order {order_id} created successfully"
 
 
 # Singleton instance
