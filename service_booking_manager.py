@@ -1,6 +1,5 @@
 """
-Service Booking Manager - FIXED VERSION
-Store appointments in Services collection and send confirmation emails
+
 """
 
 from datetime import datetime
@@ -29,11 +28,14 @@ class ServiceBookingManager:
             try:
                 from database import db
 
+                self._services_col = db["Services"]
+=======
                 if db is not None:
                     self._services_col = db["Services"]
                     print("✅ Services collection loaded")
                 else:
                     print("❌ Database not available")
+
             except Exception as e:
                 print(f"❌ Could not load Services collection: {e}")
         return self._services_col
@@ -53,13 +55,20 @@ class ServiceBookingManager:
             vehicle_info: {make, model, year, mileage}
             service_request: {type, description, urgency}
             customer_info: {name, email, phone, postcode}
+
+            provider_info: {name, location, phone, estimated_cost}
+=======
             provider_info: {name, location, phone, estimated_cost, rating, distance_miles}
+
             appointment_datetime: datetime object
 
         Returns:
             {success, appointment_id, message}
         """
         try:
+
+            appointment_id = self._generate_appointment_id()
+=======
             print("\n" + "=" * 70)
             print("📅 CREATING SERVICE APPOINTMENT")
             print("=" * 70)
@@ -76,6 +85,7 @@ class ServiceBookingManager:
                     "success": False,
                     "message": "Database not available",
                 }
+
 
             # Build appointment document
             appointment = {
@@ -108,7 +118,10 @@ class ServiceBookingManager:
                     "phone": provider_info.get("phone", ""),
                     "estimated_cost": provider_info.get("estimated_cost", 0),
                     "rating": provider_info.get("rating", 0),
+
+=======
                     "distance_miles": provider_info.get("distance_miles", 0),
+
                 },
                 # Appointment scheduling
                 "appointment": {
@@ -127,6 +140,28 @@ class ServiceBookingManager:
                 "internal_notes": [],
             }
 
+
+            # Insert into Services collection
+            col = self._get_collection()
+            if col is None:
+                return {"success": False, "message": "Database not available"}
+
+            result = col.insert_one(appointment)
+            appointment["_id"] = str(result.inserted_id)
+
+            print(f"✅ APPOINTMENT SAVED TO SERVICES COLLECTION")
+            print(f"   Appointment ID: {appointment_id}")
+
+            # Verify it's in database
+            db_appointment = col.find_one({"appointment_id": appointment_id})
+            if db_appointment:
+                print(f"✅ VERIFIED IN SERVICES COLLECTION")
+            else:
+                print(f"❌ NOT FOUND IN DATABASE!")
+
+            # Send confirmation email
+            self._send_appointment_confirmation(appointment)
+=======
             # Debug print
             print(f"\n📊 Appointment Data:")
             print(
@@ -171,18 +206,31 @@ class ServiceBookingManager:
             else:
                 print(f"⚠️ EMAIL NOT SENT (check SMTP configuration)")
 
+
             # Generate confirmation message
             message = self._generate_confirmation_message(appointment)
 
+
+=======
             print(f"\n" + "=" * 70)
             print(f"✅ APPOINTMENT CREATION COMPLETE")
             print(f"=" * 70 + "\n")
+
 
             return {
                 "success": True,
                 "appointment_id": appointment_id,
                 "appointment": appointment,
                 "message": message,
+
+            }
+
+        except Exception as e:
+            print(f"❌ Error creating appointment: {e}")
+            import traceback
+
+            traceback.print_exc()
+=======
                 "email_sent": email_sent,
             }
 
@@ -192,6 +240,7 @@ class ServiceBookingManager:
             import traceback
 
             traceback.print_exc()
+
 
             return {
                 "success": False,
@@ -267,6 +316,13 @@ class ServiceBookingManager:
         """Generate unique appointment ID"""
         timestamp = datetime.utcnow().strftime("%Y%m%d")
         unique = str(uuid.uuid4())[:8].upper()
+
+        return f"SVC-RA-{timestamp[:4]}-{unique[:5]}"
+
+    def _send_appointment_confirmation(self, appointment: Dict[str, Any]):
+        """Send confirmation email"""
+        try:
+=======
         appointment_id = f"SVC-RA-{timestamp[:4]}-{unique[:5]}"
         print(f"📋 Generated ID: {appointment_id}")
         return appointment_id
@@ -276,11 +332,28 @@ class ServiceBookingManager:
         try:
             print("\n📧 Attempting to send email...")
 
+
             from enhanced_email_service import enhanced_email_service
 
             customer_email = appointment.get("customer", {}).get("email")
             if not customer_email:
                 print("⚠️ No customer email provided")
+
+                return
+
+            # Send using the service appointment email method
+            email_sent = enhanced_email_service.send_service_appointment_confirmation(
+                appointment
+            )
+
+            if email_sent:
+                print(f"✅ Confirmation email sent to {customer_email}")
+            else:
+                print(f"⚠️ Email not sent (check SMTP configuration)")
+
+        except Exception as e:
+            print(f"❌ Error sending email: {e}")
+=======
                 return False
 
             print(f"   Recipient: {customer_email}")
@@ -305,6 +378,7 @@ class ServiceBookingManager:
             traceback.print_exc()
             return False
 
+
     def _generate_confirmation_message(self, appointment: Dict[str, Any]) -> str:
         """Generate confirmation message"""
         appointment_id = appointment["appointment_id"]
@@ -314,6 +388,9 @@ class ServiceBookingManager:
         provider = appointment["provider"]
         apt = appointment["appointment"]
 
+
+        vehicle_title = f"{vehicle['make']} {vehicle['model']} ({vehicle['year']})"
+=======
         vehicle_title = f"{vehicle['year']} {vehicle['make']} {vehicle['model']}"
 
         message = f"""✅ **SERVICE APPOINTMENT CONFIRMED**
@@ -370,6 +447,7 @@ Thank you for choosing Raava Service! We'll take excellent care of your {vehicle
 
 # Singleton
 service_booking_manager = ServiceBookingManager()
+=======
 
 
 # Test function to verify it works
@@ -411,3 +489,5 @@ if __name__ == "__main__":
         print(f"✅ Appointment ID: {test_result.get('appointment_id')}")
     else:
         print(f"❌ Error: {test_result.get('message')}")
+
+        

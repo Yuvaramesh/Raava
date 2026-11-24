@@ -242,6 +242,38 @@
         );
       }
 
+      .assistant-message {
+        background: white;
+        color: #333;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+        border-bottom-left-radius: 4px;
+      }
+
+      .bot-message strong,
+      .assistant-message strong {
+        color: #667eea;
+      }
+
+      .message p {
+        margin: 5px 0;
+      }
+
+      .message-audio-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: rgba(102, 126, 234, 0.1);
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+=======
       .assistant-message .message-avatar {
         background: var(--gray-200);
       }
@@ -582,6 +614,29 @@
         .nav-links {
           gap: 8px;
         }
+      }
+
+      .back-btn {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        padding: 6px 12px;
+        font-size: 13px;
+        font-weight: 500;
+        background: #ffffff;
+        color: #5b6cff;
+        border: 1px solid #d6d9ff;
+        border-radius: 8px;
+        text-decoration: none;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        z-index: 1000;
+        transition: all 0.3s ease;
+      }
+
+      .back-btn:hover {
+        background: #f5f6ff;
+        transform: translateY(-1px);
+=======
 
         .btn {
           padding: 8px 14px;
@@ -668,27 +723,99 @@
               rows="1"
             ></textarea>
           </div>
+
+
+=======
+
           <button class="send-btn" id="sendBtn">➤</button>
         </div>
       </div>
     </div>
 
     <script>
+
+      // 🔥 FIXED SESSION MANAGEMENT
+      let sessionId = localStorage.getItem("raava_session_id") || null;
+=======
       let sessionId = localStorage.getItem("raava_session_id") || null;
       const chatMessages = document.getElementById("chatMessages");
       const chatInput = document.getElementById("chatInput");
       const sendBtn = document.getElementById("sendBtn");
 
+
       // Clear ended sessions
       if (sessionId) {
         const endedSessions = JSON.parse(
+
+          localStorage.getItem("raava_ended_sessions") || "[]"
+        );
+        if (endedSessions.includes(sessionId)) {
+          console.log("🧹 Found ended session in localStorage, clearing...");
+=======
           localStorage.getItem("raava_ended_sessions") || "[]",
         );
         if (endedSessions.includes(sessionId)) {
+
           localStorage.removeItem("raava_session_id");
           sessionId = null;
         }
       }
+
+
+      console.log("📋 Session on load:", sessionId || "NEW");
+
+      // DOM elements
+      const chatMessages = document.getElementById("chatMessages");
+      const chatInput = document.getElementById("chatInput");
+      const sendBtn = document.getElementById("sendBtn");
+      const voiceBtn = document.getElementById("voiceBtn");
+
+      // Initialize
+      let isRecording = false;
+      let mediaRecorder = null;
+
+      // Event listeners - properly attached
+      sendBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        sendMessage();
+      });
+
+      chatInput.addEventListener("keypress", function (e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      // Auto-resize textarea
+      chatInput.addEventListener("input", function () {
+        this.style.height = "auto";
+        this.style.height = this.scrollHeight + "px";
+      });
+
+      // 🔥 MAIN SEND MESSAGE FUNCTION
+      async function sendMessage() {
+        const message = chatInput.value.trim();
+        if (!message) return;
+
+        // Disable send button
+        sendBtn.disabled = true;
+        sendBtn.textContent = "...";
+
+        // Hide welcome message on first message
+        const welcomeMsg = document.getElementById("welcomeMessage");
+        if (welcomeMsg) {
+          welcomeMsg.style.display = "none";
+        }
+
+        // Show user message
+        addMessage("user", message);
+        chatInput.value = "";
+        chatInput.style.height = "auto";
+
+        // Show typing indicator
+        const typingDiv = addTypingIndicator();
+=======
 
       // Send initial empty message to get supervisor greeting
       if (!sessionId) {
@@ -711,17 +838,90 @@
         this.style.height = Math.min(this.scrollHeight, 120) + "px";
       });
 
+
       async function sendInitialGreeting() {
         try {
           const response = await fetch("/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+
+            body: JSON.stringify({
+              message,
+              session_id: sessionId,
+            }),
+=======
             body: JSON.stringify({ message: "", session_id: sessionId }),
+
           });
 
           const data = await response.json();
 
+          // Remove typing indicator
+          typingDiv.remove();
+
           if (data.success) {
+
+            // Update session ID
+            if (data.session_id) {
+              if (!sessionId || sessionId !== data.session_id) {
+                console.log(
+                  "🔄 Session updated:",
+                  sessionId,
+                  "->",
+                  data.session_id
+                );
+              }
+              sessionId = data.session_id;
+              localStorage.setItem("raava_session_id", sessionId);
+            }
+
+            // Show assistant response
+            addMessage("assistant", data.reply);
+
+            // 🔥 Handle session clearing
+            if (data.session_ended) {
+              console.log("🧹 Session ended by server");
+
+              // Mark as ended
+              const endedSessions = JSON.parse(
+                localStorage.getItem("raava_ended_sessions") || "[]"
+              );
+              if (sessionId && !endedSessions.includes(sessionId)) {
+                endedSessions.push(sessionId);
+                localStorage.setItem(
+                  "raava_ended_sessions",
+                  JSON.stringify(endedSessions)
+                );
+              }
+
+              // Clear session
+              localStorage.removeItem("raava_session_id");
+              sessionId = null;
+
+              console.log("✅ Session cleared from browser");
+
+              // Show completion notice
+              if (data.order_created) {
+                console.log("✅ Order completed:", data.order_id);
+                showCompletionNotice("purchase", data.order_id);
+              } else if (data.appointment_created) {
+                console.log("✅ Appointment booked:", data.appointment_id);
+                showCompletionNotice("appointment", data.appointment_id);
+              }
+            }
+          } else {
+            addMessage(
+              "assistant",
+              "Sorry, I encountered an error. Please try again."
+            );
+          }
+        } catch (error) {
+          typingDiv.remove();
+          console.error("Error:", error);
+          addMessage(
+            "assistant",
+            "Sorry, I encountered a technical issue. Please try again."
+=======
             if (data.session_id) {
               sessionId = data.session_id;
               localStorage.setItem("raava_session_id", sessionId);
@@ -733,10 +933,138 @@
           addMessage(
             "assistant",
             "Hey there! Welcome to Raava! 👋\n\nI'm here to help with anything car-related. What brings you here today?",
+
           );
+        } finally {
+          // Re-enable send button
+          sendBtn.disabled = false;
+          sendBtn.textContent = "➤";
         }
       }
 
+
+      function addMessage(role, text) {
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `message ${role}-message`;
+
+        // Format text with line breaks
+        const formattedText = text
+          .split("\n")
+          .map((line) => {
+            if (line.trim()) {
+              return `<p>${escapeHtml(line)}</p>`;
+            }
+            return "";
+          })
+          .join("");
+
+        messageDiv.innerHTML = formattedText;
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        return messageDiv;
+      }
+
+      function addTypingIndicator() {
+        const typingDiv = document.createElement("div");
+        typingDiv.className = "typing-indicator";
+        typingDiv.innerHTML = `<span></span><span></span><span></span>`;
+        chatMessages.appendChild(typingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        return typingDiv;
+      }
+
+      function showCompletionNotice(type, id) {
+        const notice = document.createElement("div");
+        notice.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          padding: 25px;
+          border-radius: 15px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+          max-width: 350px;
+          z-index: 1000;
+          animation: slideInNotice 0.3s ease-out;
+        `;
+
+        const icon = type === "purchase" ? "🚗" : "🔧";
+        const title =
+          type === "purchase" ? "Order Complete!" : "Appointment Booked!";
+        const subtitle =
+          type === "purchase" ? `Order ID: ${id}` : `Appointment ID: ${id}`;
+
+        notice.innerHTML = `
+          <div style="font-size: 36px; text-align: center; margin-bottom: 12px;">${icon}</div>
+          <div style="font-weight: 600; font-size: 20px; text-align: center; margin-bottom: 10px;">${title}</div>
+          <div style="text-align: center; opacity: 0.95; font-size: 14px; margin-bottom: 18px;">${subtitle}</div>
+          <div style="text-align: center; font-size: 14px; opacity: 0.9;">Confirmation email sent ✉️</div>
+          <div style="text-align: center; font-size: 13px; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.3);">
+            Session cleared - Ready for new conversation 🔄
+          </div>
+        `;
+
+        document.body.appendChild(notice);
+
+        setTimeout(() => {
+          notice.style.animation = "slideOutNotice 0.3s ease-in";
+          setTimeout(() => notice.remove(), 300);
+        }, 8000);
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Quick action function
+      function askQuestion(question) {
+        chatInput.value = question;
+        sendMessage();
+      }
+
+      // Voice recording function (placeholder)
+      function toggleVoiceRecording() {
+        console.log("Voice recording not implemented yet");
+        alert("Voice recording feature coming soon!");
+      }
+
+      // Image upload function (placeholder)
+      function handleImageSelect(event) {
+        console.log("Image upload not implemented yet");
+        alert("Image upload feature coming soon!");
+      }
+
+      // Add CSS animations
+      const style = document.createElement("style");
+      style.textContent = `
+        @keyframes slideInNotice {
+          from {
+            transform: translateX(400px);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        
+        @keyframes slideOutNotice {
+          from {
+            transform: translateX(0);
+            opacity: 1;
+          }
+          to {
+            transform: translateX(400px);
+            opacity: 0;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+=======
       async function sendMessage() {
         const message = chatInput.value.trim();
         if (!message) return;
@@ -898,6 +1226,7 @@
         div.textContent = text;
         return div.innerHTML;
       }
+
     </script>
   </body>
 </html>
