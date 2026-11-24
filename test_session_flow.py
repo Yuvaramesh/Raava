@@ -39,6 +39,8 @@ def simulate_complete_flow():
     try:
         from session_manager import session_manager
         from service_appointment_manager import service_appointment_manager
+=======
+        from service_booking_manager import service_appointment_manager
         from datetime import timedelta
         import uuid
 

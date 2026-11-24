@@ -17,3 +17,62 @@ google-generativeai==0.3.2
 langgraph==0.0.20
 langchain-core==0.1.10
 tavily-python==0.3.0
+=======
+# flask==3.0.0
+# requests==2.31.0
+# fastapi==0.109.0
+# pydantic==2.5.3
+# uvicorn[standard]==0.27.0
+# pymongo==4.6.1
+# python-dotenv==1.0.0
+# langchain==0.1.0
+# langchain-openai==0.0.5
+# openai==1.12.0
+# gunicorn==21.2.0
+# beautifulsoup4==4.12.3
+# selenium==4.16.0
+# webdriver-manager==4.0.1
+# pillow==10.2.0
+# google-generativeai==0.3.2
+# langgraph==0.0.20
+# langchain-core==0.1.10
+# tavily-python==0.3.0
+# flask==3.0.0
+# requests==2.31.0
+# pymongo==4.6.1
+# python-dotenv==1.0.0
+
+# # OpenAI and LangChain - Compatible versions (Updated for Python 3.13)
+# openai==1.28.0
+# langchain==0.1.16
+# langchain-openai==0.1.1
+# langchain-core==0.1.42
+# langgraph==0.0.26
+
+# # Additional dependencies
+# gunicorn==21.2.0
+# beautifulsoup4==4.12.3
+# pillow==11.0.0
+# tavily-python==0.7.17
+# Core Flask and MongoDB
+flask==3.0.0
+pymongo==4.6.1
+python-dotenv==1.0.0
+requests==2.31.0
+beautifulsoup4==4.12.3
+
+# CRITICAL FIX: Pin httpx to version that has 'proxies' support
+httpx==0.27.2
+
+# Compatible OpenAI + LangChain versions (works with httpx 0.27.2)
+openai==1.54.3
+langchain==0.1.10
+langchain-openai==0.0.8
+langchain-core==0.1.28
+langgraph==0.0.26
+
+# Web server
+gunicorn==21.2.0
+
+# Additional utilities
+pydantic==2.5.3
